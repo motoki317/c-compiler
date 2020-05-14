@@ -2,4 +2,7 @@
 .idea/
 
 # Compiled file
-main
+compiler/main
+compiler/tmp*
+compiler/*.o
+compiler/*~
