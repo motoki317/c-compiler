@@ -23,12 +23,22 @@ struct Token {
     char *str;
 };
 
+// Whole user input
+char *user_input;
+
 // Current token
 Token *token;
 
-void error(char *fmt, ...) {
+// Reports error at the given location
+void error_at(char *loc, char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
+
+    int pos = loc - user_input;
+    fprintf(stderr, "%s\n", user_input);
+    // space * pos times
+    fprintf(stderr, "%*s", pos, "");
+    fprintf(stderr, "^ ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     exit(1);
@@ -48,7 +58,7 @@ bool consume(char op) {
 // Reports error otherwise.
 void expect(char op) {
     if (token->kind != TK_RESERVED || token->str[0] != op) {
-        error("Next token is not '%c'\n", op);
+        error_at(token->str, "Next token is not '%c'\n", op);
     }
     token = token->next;
 }
@@ -57,7 +67,7 @@ void expect(char op) {
 // Reports error otherwise.
 int expect_number() {
     if (token->kind != TK_NUM) {
-        error("Not a number\n");
+        error_at(token->str, "Not a number\n");
     }
     int val = token->val;
     token = token->next;
@@ -103,7 +113,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        error("Couldn't tokenize the given character");
+        error_at(p, "Cannot tokenize");
     }
 
     new_token(TK_EOF, cur, p);
@@ -115,6 +125,9 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Invalid arguments length\n");
         return 1;
     }
+
+    // Save the input
+    user_input = argv[1];
 
     // Tokenize the input
     token = tokenize(argv[1]);
