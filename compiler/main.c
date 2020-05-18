@@ -102,8 +102,18 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (*p == '+' || *p == '-') {
-            cur = new_token(TK_RESERVED, cur, p++);
+        char *tokens = "+-*/()";
+
+        bool foundToken = false;
+        while (*tokens != '\0') {
+            if (*p == *tokens) {
+                cur = new_token(TK_RESERVED, cur, p++);
+                foundToken = true;
+                break;
+            }
+            tokens++;
+        }
+        if (foundToken) {
             continue;
         }
 
@@ -120,6 +130,133 @@ Token *tokenize(char *p) {
     return head.next;
 }
 
+/**
+Basic four arithmetic operations parsing, as EBNF
+expr    = mul ("+" mul | "-" mul)*
+mul     = primary ("*" primary | "/" primary)*
+primary = num | "(" expr ")"
+*/
+
+// Node kind for building AST (Abstract Syntax Tree)
+typedef enum {
+    ND_ADD, // +
+    ND_SUB, // -
+    ND_MUL, // *
+    ND_DIV, // /
+    ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
+} NodeKind;
+
+typedef struct Node Node;
+
+struct Node {
+    NodeKind kind;
+    Node *left;
+    Node *right;
+    // Value here if the kind is ND_NUM
+    int val;
+};
+
+// new_node creates a new AST node according to the given right and left children.
+Node *new_node(NodeKind kind, Node *left, Node *right) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = kind;
+    node->left = left;
+    node->right = right;
+    return node;
+}
+
+// new_node_num creates a new leaf number node for AST.
+Node *new_node_num(int val) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_NUM;
+    node->val = val;
+    return node;
+}
+
+Node *mul();
+
+// expr parses the next 'expr' (in EBNF) as AST.
+Node *expr() {
+    Node *node = mul();
+    for (;;) {
+        // If there are '+' or '-' tokens, include the current node as left child and create a new node.
+        if (consume('+')) {
+            node = new_node(ND_ADD, node, mul());
+        } else if (consume('-')) {
+            node = new_node(ND_SUB, node, mul());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *primary();
+
+// mul parses the next 'mul' (in EBNF) as AST.
+Node *mul() {
+    Node *node = primary();
+    for (;;) {
+        if (consume('*')) {
+            node = new_node(ND_MUL, node, primary());
+        } else if (consume('/')) {
+            node = new_node(ND_DIV, node, primary());
+        } else {
+            return node;
+        }
+    }
+}
+
+// primary parses the next 'primary' (in EBNF) as AST.
+Node *primary() {
+    // If the next token is opening parenthesis, expect 'expr' inside.
+    if (consume('(')) {
+        Node *node = expr();
+        expect(')');
+        return node;
+    }
+    // Otherwise expect a number.
+    return new_node_num(expect_number());
+}
+
+// gen walks the given tree and prints out the assembly calculating the given tree.
+void gen(Node *node) {
+    if (node->kind == ND_NUM) {
+        printf("        push %d\n", node->val);
+        return;
+    }
+
+    // Calculate children and push them onto the 'rsp', register stack pointer.
+    gen(node->left);
+    gen(node->right);
+
+    // Pop the first result into rax and the second result into rax.
+    printf("        pop rdi\n");
+    printf("        pop rax\n");
+
+    // Perform the operation
+    switch (node->kind) {
+    case ND_ADD:
+        printf("        add rax, rdi\n");
+        break;
+    case ND_SUB:
+        printf("        sub rax, rdi\n");
+        break;
+    case ND_MUL:
+        printf("        imul rax, rdi\n");
+        break;
+    case ND_DIV:
+        // cqo expands 64-bit rax into 128-bit rdx, rax
+        printf("        cqo\n");
+        // idiv divides 128-bit rdx, rax by the 64-bit given register (rdi here),
+        // and sets the quotient to rax and remainder to rdx.
+        printf("        idiv rdi\n");
+        break;
+    }
+
+    // Push rax to the stack for the callee.
+    printf("        push rax\n");
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "Invalid arguments length\n");
@@ -132,24 +269,19 @@ int main(int argc, char **argv) {
     // Tokenize the input
     token = tokenize(argv[1]);
 
+    // Consume tokens to build AST (Abstract Syntax Tree)
+    Node *root = expr();
+
     // Base assembly syntax
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     printf("main:\n");
 
-    // Expect a number in the first token
-    printf("        mov rax, %d\n", expect_number());
+    // Calculate the result
+    gen(root);
 
-    while (!at_eof()) {
-        if (consume('+')) {
-            printf("        add rax, %d\n", expect_number());
-        }
-
-        // Expect '+' or '-', otherwise throw an error
-        expect('-');
-        printf("        sub rax, %d\n", expect_number());
-    }
-
+    // Pop the result from stack
+    printf("        pop rax\n");
     printf("        ret\n");
 
     return 0;
