@@ -131,9 +131,10 @@ Token *tokenize(char *p) {
 }
 
 /**
-Basic four arithmetic operations parsing, as EBNF
+Basic arithmetic operations parsing, as EBNF
 expr    = mul ("+" mul | "-" mul)*
-mul     = primary ("*" primary | "/" primary)*
+mul     = unary ("*" unary | "/" unary)*
+unary   = ("+" | "-")? primary
 primary = num | "(" expr ")"
 */
 
@@ -190,19 +191,32 @@ Node *expr() {
     }
 }
 
-Node *primary();
+Node *unary();
 
 // mul parses the next 'mul' (in EBNF) as AST.
 Node *mul() {
-    Node *node = primary();
+    Node *node = unary();
     for (;;) {
         if (consume('*')) {
-            node = new_node(ND_MUL, node, primary());
+            node = new_node(ND_MUL, node, unary());
         } else if (consume('/')) {
-            node = new_node(ND_DIV, node, primary());
+            node = new_node(ND_DIV, node, unary());
         } else {
             return node;
         }
+    }
+}
+
+Node *primary();
+
+// unary parses the next 'unary' (in EBNF) as AST.
+Node *unary() {
+    if (consume('+')) {
+        return primary();
+    } else if (consume('-')) {
+        return new_node(ND_SUB, new_node_num(0), primary());
+    } else {
+        return primary();
     }
 }
 
