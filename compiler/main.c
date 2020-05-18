@@ -19,8 +19,12 @@ typedef struct Token Token;
 struct Token {
     TokenKind kind;
     Token *next;
+    // Value if kind == TK_NUM
     int val;
+    // Token
     char *str;
+    // Token length
+    int len;
 };
 
 // Whole user input
@@ -46,8 +50,13 @@ void error_at(char *loc, char *fmt, ...) {
 
 // consume returns true when the current token is the given expected operator, and precedes to the next token.
 // Returns false otherwise.
-bool consume(char op) {
-    if (token->kind != TK_RESERVED || token->str[0] != op) {
+bool consume(char *op) {
+        // next token is not a symbol
+    if (token->kind != TK_RESERVED ||
+        // not correct expected token length
+        strlen(op) != token->len ||
+        // compare the first token->len bytes of two strings
+        memcmp(token->str, op, token->len)) {
         return false;
     }
     token = token->next;
@@ -56,9 +65,14 @@ bool consume(char op) {
 
 // expect precedes to the next token when the current token is the given expected operator.
 // Reports error otherwise.
-void expect(char op) {
-    if (token->kind != TK_RESERVED || token->str[0] != op) {
-        error_at(token->str, "Next token is not '%c'\n", op);
+void expect(char *op) {
+        // next token is not a symbol
+    if (token->kind != TK_RESERVED ||
+        // not correct expected token length
+        strlen(op) != token->len ||
+        // compare the first token->len bytes of two strings
+        memcmp(token->str, op, token->len)) {
+        error_at(token->str, "Next token is not \"%s\"\n", op);
     }
     token = token->next;
 }
@@ -88,6 +102,59 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
     return tok;
 }
 
+char symbols[][3] = {
+    "==", "!=",
+    // notice the check order
+    "<=", "<", ">=", ">",
+    "+", "-",
+    "*", "/",
+    "(", ")",
+};
+
+// Node kind for building AST (Abstract Syntax Tree)
+typedef enum {
+    ND_EQUAL, // ==
+    ND_NOT_EQUAL, // !=
+    ND_LESS_EQUAL, // <=
+    ND_LESS, // <
+    ND_GREATER_EQUAL, // >=
+    ND_GREATER, // >
+    ND_ADD, // +
+    ND_SUB, // -
+    ND_MUL, // *
+    ND_DIV, // /
+    ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
+} NodeKind;
+
+// tokenize_next tokenizes the next characters.
+Token *tokenize_next(char **p, Token *cur) {
+    // Skip space characters
+    if (isspace(**p)) {
+        *p += 1;
+        return NULL;
+    }
+
+    // Check for symbols
+    for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
+        if (memcmp(symbols[i], *p, strlen(symbols[i])) == 0) {
+            Token *next = new_token(TK_RESERVED, cur, *p);
+            next->len = strlen(symbols[i]);
+            // proceed the pointer
+            *p += strlen(symbols[i]);
+            return next;
+        }
+    }
+
+    // Check for number
+    if (isdigit(**p)) {
+        Token *next = new_token(TK_NUM, cur, *p);
+        next->val = strtol(*p, p, 10);
+        return next;
+    }
+
+    error_at(*p, "Cannot tokenize");
+}
+
 // tokenize tokenizes the given character sequence and returns it.
 Token *tokenize(char *p) {
     Token head;
@@ -96,34 +163,10 @@ Token *tokenize(char *p) {
 
     // While the next character is not a null character
     while (*p) {
-        // Skip space characters
-        if (isspace(*p)) {
-            p++;
-            continue;
+        Token *next = tokenize_next(&p, cur);
+        if (next) {
+            cur = next;
         }
-
-        char *tokens = "+-*/()";
-
-        bool foundToken = false;
-        while (*tokens != '\0') {
-            if (*p == *tokens) {
-                cur = new_token(TK_RESERVED, cur, p++);
-                foundToken = true;
-                break;
-            }
-            tokens++;
-        }
-        if (foundToken) {
-            continue;
-        }
-
-        if (isdigit(*p)) {
-            cur = new_token(TK_NUM, cur, p);
-            cur->val = strtol(p, &p, 10);
-            continue;
-        }
-
-        error_at(p, "Cannot tokenize");
     }
 
     new_token(TK_EOF, cur, p);
@@ -131,21 +174,15 @@ Token *tokenize(char *p) {
 }
 
 /**
-Basic arithmetic operations parsing, as EBNF
-expr    = mul ("+" mul | "-" mul)*
-mul     = unary ("*" unary | "/" unary)*
-unary   = ("+" | "-")? primary
-primary = num | "(" expr ")"
+Operators parsing in EBNF
+expr       = equality
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary | "/" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | "(" expr ")"
 */
-
-// Node kind for building AST (Abstract Syntax Tree)
-typedef enum {
-    ND_ADD, // +
-    ND_SUB, // -
-    ND_MUL, // *
-    ND_DIV, // /
-    ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
-} NodeKind;
 
 typedef struct Node Node;
 
@@ -174,32 +211,38 @@ Node *new_node_num(int val) {
     return node;
 }
 
-Node *mul();
+Node *expr();
 
-// expr parses the next 'expr' (in EBNF) as AST.
-Node *expr() {
-    Node *node = mul();
-    for (;;) {
-        // If there are '+' or '-' tokens, include the current node as left child and create a new node.
-        if (consume('+')) {
-            node = new_node(ND_ADD, node, mul());
-        } else if (consume('-')) {
-            node = new_node(ND_SUB, node, mul());
-        } else {
-            return node;
-        }
+// primary parses the next 'primary' (in EBNF) as AST.
+Node *primary() {
+    // If the next token is opening parenthesis, expect 'expr' inside.
+    if (consume("(")) {
+        Node *node = expr();
+        expect(")");
+        return node;
     }
+    // Otherwise expect a number.
+    return new_node_num(expect_number());
 }
 
-Node *unary();
+// unary parses the next 'unary' (in EBNF) as AST.
+Node *unary() {
+    if (consume("+")) {
+        return primary();
+    } else if (consume("-")) {
+        return new_node(ND_SUB, new_node_num(0), primary());
+    } else {
+        return primary();
+    }
+}
 
 // mul parses the next 'mul' (in EBNF) as AST.
 Node *mul() {
     Node *node = unary();
     for (;;) {
-        if (consume('*')) {
+        if (consume("*")) {
             node = new_node(ND_MUL, node, unary());
-        } else if (consume('/')) {
+        } else if (consume("/")) {
             node = new_node(ND_DIV, node, unary());
         } else {
             return node;
@@ -207,29 +250,55 @@ Node *mul() {
     }
 }
 
-Node *primary();
-
-// unary parses the next 'unary' (in EBNF) as AST.
-Node *unary() {
-    if (consume('+')) {
-        return primary();
-    } else if (consume('-')) {
-        return new_node(ND_SUB, new_node_num(0), primary());
-    } else {
-        return primary();
+// add parses the next 'add' (in EBNF) as AST.
+Node *add() {
+    Node *node = mul();
+    for (;;) {
+        if (consume("+")) {
+            node = new_node(ND_ADD, node, mul());
+        } else if (consume("-")) {
+            node = new_node(ND_SUB, node, mul());
+        } else {
+            return node;
+        }
     }
 }
 
-// primary parses the next 'primary' (in EBNF) as AST.
-Node *primary() {
-    // If the next token is opening parenthesis, expect 'expr' inside.
-    if (consume('(')) {
-        Node *node = expr();
-        expect(')');
-        return node;
+// relational parses the next 'relational' (in EBNF) as AST.
+Node *relational() {
+    Node *node = add();
+    for (;;) {
+        if (consume("<=")) {
+            node = new_node(ND_LESS_EQUAL, node, add());
+        } else if (consume("<")) {
+            node = new_node(ND_LESS, node, add());
+        } else if (consume(">=")) {
+            node = new_node(ND_GREATER_EQUAL, node, add());
+        } else if (consume(">")) {
+            node = new_node(ND_GREATER, node, add());
+        } else {
+            return node;
+        }
     }
-    // Otherwise expect a number.
-    return new_node_num(expect_number());
+}
+
+// equality parses the next 'equality' (in EBNF) as AST.
+Node *equality() {
+    Node *node = relational();
+    for (;;) {
+        if (consume("==")) {
+            node = new_node(ND_EQUAL, node, relational());
+        } else if (consume("!=")) {
+            node = new_node(ND_NOT_EQUAL, node, relational());
+        } else {
+            return node;
+        }
+    }
+}
+
+// expr parses the next 'expr' (in EBNF) as AST.
+Node *expr() {
+    return equality();
 }
 
 // gen walks the given tree and prints out the assembly calculating the given tree.
@@ -249,6 +318,7 @@ void gen(Node *node) {
 
     // Perform the operation
     switch (node->kind) {
+    // Basic arithmetic operations
     case ND_ADD:
         printf("        add rax, rdi\n");
         break;
@@ -264,6 +334,42 @@ void gen(Node *node) {
         // idiv divides 128-bit rdx, rax by the 64-bit given register (rdi here),
         // and sets the quotient to rax and remainder to rdx.
         printf("        idiv rdi\n");
+        break;
+    // Comparison operations
+    case ND_EQUAL:
+        // Compare
+        printf("        cmp rax, rdi\n");
+        // Set compare result to al (lower 8-bit of rax register)
+        printf("        sete al\n");
+        // Set rax register from al with zero-extension
+        printf("        movzb rax, al\n");
+        break;
+    case ND_NOT_EQUAL:
+        printf("        cmp rax, rdi\n");
+        printf("        setne al\n");
+        printf("        movzb rax, al\n");
+        break;
+    case ND_LESS:
+        printf("        cmp rax, rdi\n");
+        printf("        setl al\n");
+        printf("        movzb rax, al\n");
+        break;
+    case ND_LESS_EQUAL:
+        printf("        cmp rax, rdi\n");
+        printf("        setle al\n");
+        printf("        movzb rax, al\n");
+        break;
+    case ND_GREATER:
+        // opposite of less equal
+        printf("        cmp rdi, rax\n");
+        printf("        setle al\n");
+        printf("        movzb rax, al\n");
+        break;
+    case ND_GREATER_EQUAL:
+        // opposite of less
+        printf("        cmp rdi, rax\n");
+        printf("        setl al\n");
+        printf("        movzb rax, al\n");
         break;
     }
 

@@ -33,4 +33,11 @@ assert 4 "(5 + 4) / 2"
 assert 10 "-10 + 20"
 assert 5 "10 + -5"
 
+assert 1 "10 == 2 + 2 * 4"
+assert 0 "10 != 10"
+assert 1 "10 > 5"
+assert 0 "2 * 5 >= 11"
+assert 0 "10 <= 5"
+assert 1 "5 < 2 * 3"
+
 echo "OK"
