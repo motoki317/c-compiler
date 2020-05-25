@@ -7,18 +7,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-char symbols[12][3] = {
+char symbols[][3] = {
     "==", "!=",
     // notice the check order
     "<=", "<", ">=", ">",
     "+", "-",
     "*", "/",
     "(", ")",
+    ";", "=",
 };
 
 typedef enum {
-    // Symbol
+    // Reserved symbols
     TK_RESERVED,
+    // Identifiers (variables)
+    TK_IDENTIFIER,
     // Number
     TK_NUM,
     // End of the tokens
@@ -43,6 +46,9 @@ char *user_input;
 
 // Current token
 Token *token;
+
+// Each statements
+Node *code[100];
 
 // Reports error at the given location
 void error_at(char *loc, char *fmt, ...) {
@@ -72,6 +78,16 @@ bool consume(char *op) {
     }
     token = token->next;
     return true;
+}
+
+// consume_identifier consumes the next identifier token if exists, and precedes to the next token.
+Token *consume_identifier() {
+    if (token->kind != TK_IDENTIFIER) {
+        return NULL;
+    }
+    Token *ret = token;
+    token = token->next;
+    return ret;
 }
 
 // expect precedes to the next token when the current token is the given expected operator.
@@ -132,6 +148,14 @@ Token *tokenize_next(char **p, Token *cur) {
         }
     }
 
+    // Check for identifiers (variables)
+    if ('a' <= **p && **p <= 'z') {
+        Token *next = new_token(TK_IDENTIFIER, cur, *p);
+        next->len = 1;
+        *p += 1;
+        return next;
+    }
+
     // Check for number
     if (isdigit(**p)) {
         Token *next = new_token(TK_NUM, cur, *p);
@@ -161,14 +185,17 @@ Token *tokenize(char *p) {
 }
 
 /**
-Operators parsing in EBNF
-expr       = equality
+Program syntax in EBNF
+program    = stmt*
+stmt       = expr ";"
+expr       = assign
+assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | "(" expr ")"
+primary    = num | ident | "(" expr ")"
 */
 
 // new_node creates a new AST node according to the given right and left children.
@@ -196,6 +223,15 @@ Node *primary() {
     if (consume("(")) {
         Node *node = expr();
         expect(")");
+        return node;
+    }
+    // If the next token is identifier
+    Token *tok = consume_identifier();
+    if (tok) {
+        // only support 26, 1 length local variable for now
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_LOCAL_VAR;
+        node->offset = (tok->str[0] - 'a' + 1) * 8;
         return node;
     }
     // Otherwise expect a number.
@@ -273,7 +309,32 @@ Node *equality() {
     }
 }
 
+// assign parses the next 'assign' (in EBNF) as AST.
+Node *assign() {
+    Node *node = equality();
+    if (consume("=")) {
+        node = new_node(ND_ASSIGN, node, assign());
+    }
+    return node;
+}
+
 // expr parses the next 'expr' (in EBNF) as AST.
 Node *expr() {
-    return equality();
+    return assign();
+}
+
+// stmt parses the next 'stmt' (in EBNF) as AST.
+Node *stmt() {
+    Node *node = expr();
+    expect(";");
+    return node;
+}
+
+// program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
+void program() {
+    int i = 0;
+    while (!at_eof()) {
+        code[i++] = stmt();
+    }
+    code[i] = NULL;
 }

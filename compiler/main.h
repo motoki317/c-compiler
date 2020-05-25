@@ -10,6 +10,7 @@ Token *tokenize(char *p);
 
 // Node kind for building AST (Abstract Syntax Tree)
 typedef enum {
+    ND_ASSIGN, // =
     ND_EQUAL, // ==
     ND_NOT_EQUAL, // !=
     ND_LESS_EQUAL, // <=
@@ -20,6 +21,7 @@ typedef enum {
     ND_SUB, // -
     ND_MUL, // *
     ND_DIV, // /
+    ND_LOCAL_VAR, // Local variable
     ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
 } NodeKind;
 
@@ -31,8 +33,12 @@ struct Node {
     Node *right;
     // Value here if the kind is ND_NUM
     int val;
+    // Offset here if the kind is ND_LVAR
+    int offset;
 };
 
-Node *expr();
+extern Node *code[100];
+
+void program();
 
 void gen();

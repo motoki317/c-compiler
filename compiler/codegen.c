@@ -1,11 +1,47 @@
 #include "main.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+
+// Reports error at the given location
+void error(char *message) {
+    fprintf(stderr, "%s\n", message);
+    exit(1);
+}
+
+// gen_lvalue evaluates the next lvalue (prints error and exists if not), and pushes the address to the stack.
+void gen_lvalue(Node *node) {
+    if (node->kind != ND_LOCAL_VAR) {
+        error("lvalue in assignment is not a local variable");
+    }
+
+    // calculate the variable address
+    printf("        mov rax, rbp\n");
+    printf("        sub rax, %d\n", node->offset);
+    printf("        push rax\n");
+}
 
 // gen_tree walks the given tree and prints out the assembly calculating the given tree.
 void gen_tree(Node *node) {
-    if (node->kind == ND_NUM) {
+    switch (node->kind) {
+    case ND_NUM:
         printf("        push %d\n", node->val);
+        return;
+    case ND_LOCAL_VAR:
+        // evaluate the variable
+        gen_lvalue(node);
+        printf("        pop rax\n");
+        printf("        mov rax, [rax]\n");
+        printf("        push rax\n");
+        return;
+    case ND_ASSIGN:
+        gen_lvalue(node->left);
+        gen_tree(node->right);
+
+        printf("        pop rdi\n");
+        printf("        pop rax\n");
+        printf("        mov [rax], rdi\n");
+        printf("        push rdi\n");
         return;
     }
 
@@ -80,18 +116,29 @@ void gen_tree(Node *node) {
 
 // gen reads the parsed code in AST, and prints out the assembly to complete the compilation.
 void gen() {
-    // Consume tokens to build AST (Abstract Syntax Tree)
-    Node *root = expr();
+    // Consume tokens to build multiple ASTs (Abstract Syntax Tree)
+    program();
 
     // Base assembly syntax
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     printf("main:\n");
 
-    // Calculate the result
-    gen_tree(root);
+    // Function Prologue
+    // Allocate 26 variables
+    printf("        push rbp\n");
+    printf("        mov rbp, rsp\n");
+    printf("        sub rsp, 208\n");
 
-    // Pop the result from stack
-    printf("        pop rax\n");
+    // Calculate the result for each statements
+    for (int i = 0; code[i]; i++) {
+        gen_tree(code[i]);
+        // just pop the result for now
+        printf("        pop rax\n");
+    }
+
+    // Function Epilogue
+    printf("        mov rsp, rbp\n");
+    printf("        pop rbp\n");
     printf("        ret\n");
 }
