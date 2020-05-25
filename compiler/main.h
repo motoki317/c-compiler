@@ -6,6 +6,22 @@ extern char *user_input;
 // Current token
 extern Token *token;
 
+typedef struct LocalVar LocalVar;
+
+// Local variables as linked list
+struct LocalVar {
+  LocalVar *next;
+  // variable name
+  char *name;
+  // variable name length
+  int len;
+  // offset from rbp
+  int offset;
+};
+
+// First local variable
+extern LocalVar *locals;
+
 Token *tokenize(char *p);
 
 // Node kind for building AST (Abstract Syntax Tree)

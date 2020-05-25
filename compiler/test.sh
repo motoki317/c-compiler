@@ -43,5 +43,6 @@ assert 1 "5 < 2 * 3;"
 assert 10 "a = 10; a;"
 assert 10 "b = 5; b + 5;"
 assert 32 "a = 4; b = 4 + a; a * b;"
+assert 6 "foo = 1; bar = 2 + 3; foo + bar;"
 
 echo "OK"

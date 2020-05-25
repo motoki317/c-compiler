@@ -41,6 +41,8 @@ struct Token {
     int len;
 };
 
+LocalVar *locals;
+
 // Whole user input
 char *user_input;
 
@@ -129,6 +131,21 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
     return tok;
 }
 
+// find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
+LocalVar *find_local_var(Token *tok) {
+    for (LocalVar *var = locals; var; var = var->next) {
+        if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
+// is_variable_char returns true if the given character is a valid character for variable.
+bool is_variable_char(char c) {
+    return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
+}
+
 // tokenize_next tokenizes the next characters.
 Token *tokenize_next(char **p, Token *cur) {
     // Skip space characters
@@ -148,11 +165,15 @@ Token *tokenize_next(char **p, Token *cur) {
         }
     }
 
-    // Check for identifiers (variables)
-    if ('a' <= **p && **p <= 'z') {
+    // Check for identifiers (local variables)
+    if (is_variable_char(**p)) {
+        int len = 0;
         Token *next = new_token(TK_IDENTIFIER, cur, *p);
-        next->len = 1;
-        *p += 1;
+        while (is_variable_char(**p)) {
+            len++;
+            *p += 1;
+        }
+        next->len = len;
         return next;
     }
 
@@ -171,6 +192,8 @@ Token *tokenize(char *p) {
     Token head;
     head.next = NULL;
     Token *cur = &head;
+
+    locals = calloc(1, sizeof(LocalVar));
 
     // While the next character is not a null character
     while (*p) {
@@ -225,15 +248,27 @@ Node *primary() {
         expect(")");
         return node;
     }
-    // If the next token is identifier
+
+    // If the next token is identifier (local variable), consume it.
     Token *tok = consume_identifier();
     if (tok) {
-        // only support 26, 1 length local variable for now
         Node *node = calloc(1, sizeof(Node));
         node->kind = ND_LOCAL_VAR;
-        node->offset = (tok->str[0] - 'a' + 1) * 8;
+        // determine offset
+        LocalVar *var = find_local_var(tok);
+        if (!var) {
+            // new variable
+            var = calloc(1, sizeof(LocalVar));
+            var->next = locals;
+            var->name = tok->str;
+            var->len = tok->len;
+            var->offset = locals->offset + 8;
+            locals = var;
+        }
+        node->offset = var->offset;
         return node;
     }
+
     // Otherwise expect a number.
     return new_node_num(expect_number());
 }

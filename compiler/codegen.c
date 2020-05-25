@@ -125,10 +125,12 @@ void gen() {
     printf("main:\n");
 
     // Function Prologue
-    // Allocate 26 variables
     printf("        push rbp\n");
     printf("        mov rbp, rsp\n");
-    printf("        sub rsp, 208\n");
+    // allocate local variables
+    if (locals->offset > 0) {
+        printf("        sub rsp, %d\n", locals->offset);
+    }
 
     // Calculate the result for each statements
     for (int i = 0; code[i]; i++) {
