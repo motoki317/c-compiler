@@ -37,6 +37,7 @@ typedef enum {
     ND_SUB, // -
     ND_MUL, // *
     ND_DIV, // /
+    ND_RETURN, // "return" statement
     ND_LOCAL_VAR, // Local variable
     ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
 } NodeKind;

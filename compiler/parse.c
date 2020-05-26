@@ -20,6 +20,8 @@ char symbols[][3] = {
 typedef enum {
     // Reserved symbols
     TK_RESERVED,
+    // "return" token
+    TK_RETURN,
     // Identifiers (variables)
     TK_IDENTIFIER,
     // Number
@@ -76,6 +78,15 @@ bool consume(char *op) {
         strlen(op) != token->len ||
         // compare the first token->len bytes of two strings
         memcmp(token->str, op, token->len)) {
+        return false;
+    }
+    token = token->next;
+    return true;
+}
+
+// consume_return returns true when the current token is TK_RETURN, and precedes to the next token.
+bool consume_return() {
+    if (token->kind != TK_RETURN) {
         return false;
     }
     token = token->next;
@@ -141,9 +152,26 @@ LocalVar *find_local_var(Token *tok) {
     return NULL;
 }
 
-// is_variable_char returns true if the given character is a valid character for variable.
+// is_variable_char returns true if the given character is a valid first character for a variable.
 bool is_variable_char(char c) {
     return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
+}
+
+// is_alnum returns true if the given character is an alphabet, number, or underscore.
+bool is_alnum(char c) {
+  return ('a' <= c && c <= 'z') ||
+         ('A' <= c && c <= 'Z') ||
+         ('0' <= c && c <= '9') ||
+         (c == '_');
+}
+
+// has_char_length checks if the given string length is greater than or equal to the given length.
+bool has_char_length(char *p, size_t len) {
+    while (*p && len > 0) {
+        len--;
+        p += 1;
+    }
+    return len == 0;
 }
 
 // tokenize_next tokenizes the next characters.
@@ -163,6 +191,13 @@ Token *tokenize_next(char **p, Token *cur) {
             *p += strlen(symbols[i]);
             return next;
         }
+    }
+
+    // Check for "return" token
+    if (has_char_length(*p, 6) && memcmp(*p, "return", 6) == 0 && !is_alnum((*p)[6])) {
+        Token *next = new_token(TK_RETURN, cur, *p);
+        *p += 6;
+        return next;
     }
 
     // Check for identifiers (local variables)
@@ -210,7 +245,7 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = stmt*
-stmt       = expr ";"
+stmt       = expr ";" | "return" expr ";"
 expr       = assign
 assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
@@ -360,7 +395,16 @@ Node *expr() {
 
 // stmt parses the next 'stmt' (in EBNF) as AST.
 Node *stmt() {
-    Node *node = expr();
+    Node *node;
+
+    if (consume_return()) {
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_RETURN;
+        node->left = expr();
+    } else {
+        node = expr();
+    }
+
     expect(";");
     return node;
 }

@@ -30,6 +30,7 @@ void gen_tree(Node *node) {
     case ND_LOCAL_VAR:
         // evaluate the variable
         gen_lvalue(node);
+
         printf("        pop rax\n");
         printf("        mov rax, [rax]\n");
         printf("        push rax\n");
@@ -42,6 +43,16 @@ void gen_tree(Node *node) {
         printf("        pop rax\n");
         printf("        mov [rax], rdi\n");
         printf("        push rdi\n");
+        return;
+    case ND_RETURN:
+        gen_tree(node->left);
+
+        // Pop the result to rax
+        printf("        pop rax\n");
+        // Function epilogue
+        printf("        mov rsp, rbp\n");
+        printf("        pop rbp\n");
+        printf("        ret\n");
         return;
     }
 
