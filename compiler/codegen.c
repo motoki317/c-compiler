@@ -69,15 +69,21 @@ void gen_tree(Node *node) {
         }
         // otherwise, evaluate inside "if"
         gen_tree(node->right);
+        // pop the result so it doesn't stay on stack
+        printf("        pop rax\n");
         if (node->third) {
             // and go to end (if else block exists)
             printf("        jmp .Lend%d\n", node->label);
             // generate "else" block
             printf(".Lelse%d:\n", node->label + 1);
             gen_tree(node->third);
+            // pop the result so it doesn't stay on stack
+            printf("        pop rax\n");
         }
         // end block (next code block)
         printf(".Lend%d:\n", node->label);
+        // leave something on stack (gen func expects each gen_tree to generate a value)
+        printf("        push 0\n");
         return;
     case ND_WHILE:
         printf(".Lbegin%d:\n", node->label);
@@ -89,16 +95,22 @@ void gen_tree(Node *node) {
         printf("        je .Lend%d\n", node->label + 1);
         // otherwise, evaluate inside "while"
         gen_tree(node->right);
+        // pop the result so it doesn't stay on stack
+        printf("        pop rax\n");
         // then return back to the beginning
         printf("        jmp .Lbegin%d\n", node->label);
 
         // end block (next code block)
         printf(".Lend%d:\n", node->label + 1);
+        // leave something on stack (gen func expects each gen_tree to generate a value)
+        printf("        push 0\n");
         return;
     case ND_FOR:
         // init
         if (node->left) {
             gen_tree(node->left);
+            // pop the result so it doesn't stay on stack
+            printf("        pop rax\n");
         }
         // "for" block
         printf(".Lbegin%d:\n", node->label);
@@ -113,15 +125,21 @@ void gen_tree(Node *node) {
         printf("        je .Lend%d\n", node->label + 1);
         // otherwise, evaluate inside "for"
         gen_tree(node->fourth);
+        // pop the result so it doesn't stay on stack
+        printf("        pop rax\n");
         // on continue
         if (node->third) {
             gen_tree(node->third);
+            // pop the result so it doesn't stay on stack
+            printf("        pop rax\n");
         }
         // then return back to the beginning
         printf("        jmp .Lbegin%d\n", node->label);
 
         // end block (next code block)
         printf(".Lend%d:\n", node->label + 1);
+        // leave something on stack (gen func expects each gen_tree to generate a value)
+        printf("        push 0\n");
         return;
     }
 
