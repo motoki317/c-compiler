@@ -48,4 +48,12 @@ assert 6 "foo = 1; bar = 2 + 3; foo + bar;"
 assert 14 "a = 3; b = 5 * 6 - 8; return a + b / 2;"
 assert 5 "return 5; return 8;"
 
+assert 1 "if (1 == 1) return 1; else return 2;"
+assert 5 "i = 5; if (i == 4) return 3; return 5;"
+
+assert 5 "i = 0; for (; i < 5; ) i = i + 1; return i;"
+assert 16 "ans = 1; for (i = 0; i < 4; i = i + 1) ans = ans * 2; return ans;"
+
+assert 17 "test = 20; while (test / 3 != 5) test = test - 1; return test;"
+
 echo "OK"

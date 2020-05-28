@@ -17,11 +17,18 @@ char symbols[][3] = {
     ";", "=",
 };
 
+char keywords[][8] = {
+    "return", "if", "else",
+    "for", "while",
+};
+
+int next_label = 0;
+
 typedef enum {
     // Reserved symbols
     TK_RESERVED,
-    // "return" token
-    TK_RETURN,
+    // Reserved keywords such as "return", "if"
+    TK_KEYWORD,
     // Identifiers (variables)
     TK_IDENTIFIER,
     // Number
@@ -84,9 +91,11 @@ bool consume(char *op) {
     return true;
 }
 
-// consume_return returns true when the current token is TK_RETURN, and precedes to the next token.
-bool consume_return() {
-    if (token->kind != TK_RETURN) {
+// consume_keyword returns true when the current token is TK_KEYWORD, and precedes to the next token.
+bool consume_keyword(char *keyword) {
+    if (token->kind != TK_KEYWORD ||
+        strlen(keyword) != token->len ||
+        memcmp(keyword, token->str, token->len)) {
         return false;
     }
     token = token->next;
@@ -193,11 +202,17 @@ Token *tokenize_next(char **p, Token *cur) {
         }
     }
 
-    // Check for "return" token
-    if (has_char_length(*p, 6) && memcmp(*p, "return", 6) == 0 && !is_alnum((*p)[6])) {
-        Token *next = new_token(TK_RETURN, cur, *p);
-        *p += 6;
-        return next;
+    // Check for reserved keywords
+    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
+        size_t len = strlen(keywords[i]);
+        if (has_char_length(*p, len) &&
+            memcmp(*p, keywords[i], len) == 0 &&
+            !is_alnum((*p)[len])) {
+            Token *next = new_token(TK_KEYWORD, cur, *p);
+            next->len = len;
+            *p += len;
+            return next;
+        }
     }
 
     // Check for identifiers (local variables)
@@ -245,7 +260,11 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = stmt*
-stmt       = expr ";" | "return" expr ";"
+stmt       = expr ";"
+            | "if" "(" expr ")" stmt ("else" stmt)?
+            | "while" "(" expr ")" stmt
+            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+            | "return" expr ";"
 expr       = assign
 assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
@@ -397,15 +416,86 @@ Node *expr() {
 Node *stmt() {
     Node *node;
 
-    if (consume_return()) {
+    if (consume_keyword("return")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
         node->left = expr();
+        expect(";");
+    } else if (consume_keyword("if")) {
+        expect("(");
+        Node *cond = expr();
+        expect(")");
+        Node *inside = stmt();
+
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_IF;
+        node->left = cond;
+        node->right = inside;
+        // Label: end
+        node->label = next_label;
+        next_label++;
+
+        if (consume_keyword("else")) {
+            Node *els = stmt();
+            node->third = els;
+            // Label: else
+            next_label++;
+        }
+    } else if (consume_keyword("while")) {
+        expect("(");
+        Node *cond = expr();
+        expect(")");
+        Node *inside = stmt();
+
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_WHILE;
+        node->left = cond;
+        node->right = inside;
+        // Labels: begin, end
+        node->label = next_label;
+        next_label += 2;
+    } else if (consume_keyword("for")) {
+        expect("(");
+
+        Node *init;
+        Node *cond;
+        Node *cont;
+        Node *inside;
+
+        if (consume(";")) {
+            init = NULL;
+        } else {
+            init = expr();
+            expect(";");
+        }
+        if (consume(";")) {
+            cond = NULL;
+        } else {
+            cond = expr();
+            expect(";");
+        }
+        if (consume(")")) {
+            cont = NULL;
+        } else {
+            cont = expr();
+            expect(")");
+        }
+        inside = stmt();
+
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_FOR;
+        node->left = init;
+        node->right = cond;
+        node->third = cont;
+        node->fourth = inside;
+        // Labels: begin, end
+        node->label = next_label;
+        next_label += 2;
     } else {
         node = expr();
+        expect(";");
     }
 
-    expect(";");
     return node;
 }
 

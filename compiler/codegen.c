@@ -54,6 +54,75 @@ void gen_tree(Node *node) {
         printf("        pop rbp\n");
         printf("        ret\n");
         return;
+    case ND_IF:
+        gen_tree(node->left);
+
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        // If the evaluated condition is 0 (false),
+        if (node->third) {
+            // Jump to "else" block
+            printf("        je .Lelse%d\n", node->label + 1);
+        } else {
+            // No "else" block, so jump to outside of the "if" statement
+            printf("        je .Lend%d\n", node->label);
+        }
+        // otherwise, evaluate inside "if"
+        gen_tree(node->right);
+        if (node->third) {
+            // and go to end (if else block exists)
+            printf("        jmp .Lend%d\n", node->label);
+            // generate "else" block
+            printf(".Lelse%d:\n", node->label + 1);
+            gen_tree(node->third);
+        }
+        // end block (next code block)
+        printf(".Lend%d:\n", node->label);
+        return;
+    case ND_WHILE:
+        printf(".Lbegin%d:\n", node->label);
+
+        gen_tree(node->left);
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        // If the evaluated condition is false, break the loop
+        printf("        je .Lend%d\n", node->label + 1);
+        // otherwise, evaluate inside "while"
+        gen_tree(node->right);
+        // then return back to the beginning
+        printf("        jmp .Lbegin%d\n", node->label);
+
+        // end block (next code block)
+        printf(".Lend%d:\n", node->label + 1);
+        return;
+    case ND_FOR:
+        // init
+        if (node->left) {
+            gen_tree(node->left);
+        }
+        // "for" block
+        printf(".Lbegin%d:\n", node->label);
+        if (node->right) {
+            gen_tree(node->right);
+        } else {
+            printf("        push 1\n");
+        }
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        // If the evaluated condition is false, break the loop
+        printf("        je .Lend%d\n", node->label + 1);
+        // otherwise, evaluate inside "for"
+        gen_tree(node->fourth);
+        // on continue
+        if (node->third) {
+            gen_tree(node->third);
+        }
+        // then return back to the beginning
+        printf("        jmp .Lbegin%d\n", node->label);
+
+        // end block (next code block)
+        printf(".Lend%d:\n", node->label + 1);
+        return;
     }
 
     // Calculate children and push them onto the 'rsp', register stack pointer.
