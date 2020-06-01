@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// register names
+char arguments[6][4] = {
+    "rdi", "rsi", "rdx", "rcx", "r8", "r9",
+};
+
 // Reports error at the given location
 void error(char *message) {
     fprintf(stderr, "%s\n", message);
@@ -150,7 +155,24 @@ void gen_tree(Node *node) {
         }
         printf("        push 0\n");
         return;
-    case ND_FUNC_CALL:
+    case ND_FUNC_CALL: ;
+        // Evaluate arguments
+        Node *cur = node;
+        int numArgs = 0;
+        while(cur->left) {
+            gen_tree(cur->left);
+            cur = cur->right;
+            numArgs++;
+        }
+        // Pop evaluated result into registers in order of: RDI, RSI, RDX, RCX, R8, R9
+        while(numArgs > 0) {
+            numArgs--;
+            if (numArgs < 6) {
+                printf("        pop %s\n", arguments[numArgs]);
+            } else {
+                printf("        pop rax\n");
+            }
+        }
         // Evaluate function
         printf("        call %.*s\n", node->len, node->str);
         return;

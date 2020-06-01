@@ -16,6 +16,7 @@ char symbols[][3] = {
     "(", ")",
     ";", "=",
     "{", "}",
+    ",",
 };
 
 char keywords[][8] = {
@@ -275,7 +276,7 @@ add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = ("+" | "-")? primary
 primary    = num
-            | ident ("(" ")")?
+            | ident ("(" (expr ("," expr)*)? ")")?
             | "(" expr ")"
 */
 
@@ -298,8 +299,6 @@ Node *new_node_num(int val) {
 
 Node *expr();
 
-Node *stmt();
-
 // primary parses the next 'primary' (in EBNF) as AST.
 Node *primary() {
     // If the next token is opening parenthesis, expect 'expr' inside.
@@ -318,7 +317,19 @@ Node *primary() {
             node->kind = ND_FUNC_CALL;
             node->str = tok->str;
             node->len = tok->len;
-            expect(")");
+
+            Node *cur = node;
+            while (!consume(")")) {
+                cur->left = expr();
+                Node *next = calloc(1, sizeof(Node));
+                next->kind = ND_FUNC_CALL;
+                cur->right = next;
+                cur = next;
+                if (!consume(",")) {
+                    expect(")");
+                    break;
+                }
+            }
             return node;
         }
 
