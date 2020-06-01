@@ -150,6 +150,10 @@ void gen_tree(Node *node) {
         }
         printf("        push 0\n");
         return;
+    case ND_FUNC_CALL:
+        // Evaluate function
+        printf("        call %.*s\n", node->len, node->str);
+        return;
     }
 
     // Calculate children and push them onto the 'rsp', register stack pointer.

@@ -274,7 +274,9 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | ident | "(" expr ")"
+primary    = num
+            | ident ("(" ")")?
+            | "(" expr ")"
 */
 
 // new_node creates a new AST node according to the given right and left children.
@@ -296,6 +298,8 @@ Node *new_node_num(int val) {
 
 Node *expr();
 
+Node *stmt();
+
 // primary parses the next 'primary' (in EBNF) as AST.
 Node *primary() {
     // If the next token is opening parenthesis, expect 'expr' inside.
@@ -308,6 +312,17 @@ Node *primary() {
     // If the next token is identifier (local variable), consume it.
     Token *tok = consume_identifier();
     if (tok) {
+        // Function call
+        if (consume("(")) {
+            Node *node = calloc(1, sizeof(Node));
+            node->kind = ND_FUNC_CALL;
+            node->str = tok->str;
+            node->len = tok->len;
+            expect(")");
+            return node;
+        }
+
+        // Local variable
         Node *node = calloc(1, sizeof(Node));
         node->kind = ND_LOCAL_VAR;
         // determine offset

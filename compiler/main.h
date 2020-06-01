@@ -10,13 +10,13 @@ typedef struct LocalVar LocalVar;
 
 // Local variables as linked list
 struct LocalVar {
-  LocalVar *next;
-  // variable name
-  char *name;
-  // variable name length
-  int len;
-  // offset from rbp
-  int offset;
+    LocalVar *next;
+    // variable name
+    char *name;
+    // variable name length
+    int len;
+    // offset from rbp
+    int offset;
 };
 
 // First local variable
@@ -37,6 +37,7 @@ typedef enum {
     ND_SUB, // -
     ND_MUL, // *
     ND_DIV, // /
+    ND_FUNC_CALL, // function call
     ND_RETURN, // "return" statement
     ND_IF, // "if" statement
     ND_WHILE, // "while" statement
@@ -60,6 +61,9 @@ struct Node {
     int offset;
     // Label name sequencing here if the kind is ND_IF, ND_WHILE, or ND_FOR
     int label;
+    // Function name if the kind is ND_FUNC_CALL
+    char *str;
+    int len;
 };
 
 extern Node *code[100];
