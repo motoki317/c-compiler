@@ -56,4 +56,7 @@ assert 16 "ans = 1; for (i = 0; i < 4; i = i + 1) ans = ans * 2; return ans;"
 
 assert 17 "test = 20; while (test / 3 != 5) test = test - 1; return test;"
 
+assert 2 "i = 2; if (i == 3) { i = i + 1; i = i * 2 + 1; } return i;"
+assert 7 "i = 2; if (i == 2) { i = i + 1; i = i * 2 + 1; } return i;"
+
 echo "OK"

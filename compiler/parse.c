@@ -15,6 +15,7 @@ char symbols[][3] = {
     "*", "/",
     "(", ")",
     ";", "=",
+    "{", "}",
 };
 
 char keywords[][8] = {
@@ -261,6 +262,7 @@ Token *tokenize(char *p) {
 Program syntax in EBNF
 program    = stmt*
 stmt       = expr ";"
+            | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
@@ -491,6 +493,18 @@ Node *stmt() {
         // Labels: begin, end
         node->label = next_label;
         next_label += 2;
+    } else if (consume("{")) {
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_BLOCK;
+        Node *cur = node;
+
+        while (!consume("}")) {
+            cur->left = stmt();
+            Node *next = calloc(1, sizeof(Node));
+            next->kind = ND_BLOCK;
+            cur->right = next;
+            cur = next;
+        }
     } else {
         node = expr();
         expect(";");

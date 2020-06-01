@@ -41,6 +41,7 @@ typedef enum {
     ND_IF, // "if" statement
     ND_WHILE, // "while" statement
     ND_FOR, // "for" statement
+    ND_BLOCK, // "{ ~ }" block statement
     ND_LOCAL_VAR, // Local variable
     ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
 } NodeKind;

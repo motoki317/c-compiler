@@ -141,6 +141,15 @@ void gen_tree(Node *node) {
         // leave something on stack (gen func expects each gen_tree to generate a value)
         printf("        push 0\n");
         return;
+    case ND_BLOCK:
+        while(node->left) {
+            gen_tree(node->left);
+            // pop the result so it doesn't stay on stack
+            printf("        pop rax\n");
+            node = node->right;
+        }
+        printf("        push 0\n");
+        return;
     }
 
     // Calculate children and push them onto the 'rsp', register stack pointer.
