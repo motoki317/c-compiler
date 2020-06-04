@@ -158,23 +158,31 @@ void gen_tree(Node *node) {
     case ND_FUNC_CALL: ;
         // Evaluate arguments
         Node *cur = node;
-        int numArgs = 0;
+        int num_args = 0;
         while(cur->left) {
             gen_tree(cur->left);
             cur = cur->right;
-            numArgs++;
+            num_args++;
         }
         // Pop evaluated result into registers in order of: RDI, RSI, RDX, RCX, R8, R9
-        while(numArgs > 0) {
-            numArgs--;
-            if (numArgs < 6) {
-                printf("        pop %s\n", arguments[numArgs]);
+        while(num_args > 0) {
+            num_args--;
+            if (num_args < 6) {
+                printf("        pop %s\n", arguments[num_args]);
             } else {
                 printf("        pop rax\n");
             }
         }
-        // Evaluate function
+        // 16-byte align rsp
+        // 1. push the original rsp two times (which pushes rsp by 16 bytes)
+        printf("        push rsp\n");
+        printf("        push [rsp]\n");
+        // 2. 16-byte align rsp, possible subtracting 8 bytes.
+        printf("        and rsp, -0x10\n");
+        // 3. Call function
         printf("        call %.*s\n", node->len, node->str);
+        // 4. bring back the original rsp, which is always at [rsp + 8]
+        printf("        mov rsp, 8[rsp]\n");
         return;
     }
 
