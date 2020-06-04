@@ -19,9 +19,6 @@ struct LocalVar {
     int offset;
 };
 
-// First local variable
-extern LocalVar *locals;
-
 Token *tokenize(char *p);
 
 // Node kind for building AST (Abstract Syntax Tree)
@@ -37,6 +34,7 @@ typedef enum {
     ND_SUB, // -
     ND_MUL, // *
     ND_DIV, // /
+    ND_FUNC, // function
     ND_FUNC_CALL, // function call
     ND_RETURN, // "return" statement
     ND_IF, // "if" statement
@@ -57,13 +55,17 @@ struct Node {
     Node *fourth;
     // Value here if the kind is ND_NUM
     int val;
-    // Offset here if the kind is ND_LVAR
+    // Offset here if the kind is ND_LOCAL_VAR
     int offset;
     // Label name sequencing here if the kind is ND_IF, ND_WHILE, or ND_FOR
     int label;
-    // Function name if the kind is ND_FUNC_CALL
+    // Function name if the kind is ND_FUNC_CALL or ND_FUNC
     char *str;
     int len;
+    // Local variables if the kind is ND_FUNC
+    Node *local_vars;
+    // List of function arguments if the kind is ND_FUNC
+    Node *arguments;
 };
 
 extern Node *code[100];

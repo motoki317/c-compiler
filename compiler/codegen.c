@@ -153,7 +153,7 @@ void gen_tree(Node *node) {
             printf("        pop rax\n");
             node = node->right;
         }
-        printf("        push 0\n");
+        printf("        push rax\n");
         return;
     case ND_FUNC_CALL: ;
         // Evaluate arguments
@@ -182,7 +182,46 @@ void gen_tree(Node *node) {
         // 3. Call function
         printf("        call %.*s\n", node->len, node->str);
         // 4. bring back the original rsp, which is always at [rsp + 8]
-        printf("        mov rsp, 8[rsp]\n");
+        printf("        add rsp, 8\n");
+        printf("        mov rsp, [rsp]\n");
+        // push the result to stack
+        printf("        push rax\n");
+        return;
+    case ND_FUNC:
+        // Function name
+        printf("%.*s:\n", node->len, node->str);
+        // Function Prologue
+        printf("        push rbp\n");
+        printf("        mov rbp, rsp\n");
+        // allocate local variables
+        if (node->local_vars) {
+            printf("        sub rsp, %d\n", node->local_vars->offset);
+        }
+
+        // Copy function arguments from registers to stack
+        Node *next_arg = node->arguments;
+        if (next_arg) {
+            // argument index
+            for (int i = next_arg->offset / 8 - 1; i >= 0; i--) {
+                // evaluate place as local variable
+                // note: forcefully rewriting the offset here, not a good practice
+                next_arg->offset = (i + 1) * 8;
+                gen_lvalue(next_arg);
+                printf("        pop rax\n");
+                if (i < 6) {
+                    printf("        mov [rax], %s\n", arguments[i]);
+                }
+            }
+        }
+
+        // Function body
+        gen_tree(node->left);
+        printf("        pop rax\n");
+
+        // Function Epilogue
+        printf("        mov rsp, rbp\n");
+        printf("        pop rbp\n");
+        printf("        ret\n");
         return;
     }
 
@@ -263,25 +302,9 @@ void gen() {
     // Base assembly syntax
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
-    printf("main:\n");
 
-    // Function Prologue
-    printf("        push rbp\n");
-    printf("        mov rbp, rsp\n");
-    // allocate local variables
-    if (locals->offset > 0) {
-        printf("        sub rsp, %d\n", locals->offset);
-    }
-
-    // Calculate the result for each statements
+    // Calculate the result for each functions
     for (int i = 0; code[i]; i++) {
         gen_tree(code[i]);
-        // just pop the result for now
-        printf("        pop rax\n");
     }
-
-    // Function Epilogue
-    printf("        mov rsp, rbp\n");
-    printf("        pop rbp\n");
-    printf("        ret\n");
 }

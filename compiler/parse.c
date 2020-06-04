@@ -114,6 +114,16 @@ Token *consume_identifier() {
     return ret;
 }
 
+// consume_identifier returns the next identifier token, otherwise reports an error.
+Token *expect_identifier() {
+    if (token->kind != TK_IDENTIFIER) {
+        error_at(token->str, "Next token is not an identifier\n");
+    }
+    Token *ret = token;
+    token = token->next;
+    return ret;
+}
+
 // expect precedes to the next token when the current token is the given expected operator.
 // Reports error otherwise.
 void expect(char *op) {
@@ -151,16 +161,6 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
     tok->str = str;
     cur->next = tok;
     return tok;
-}
-
-// find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
-LocalVar *find_local_var(Token *tok) {
-    for (LocalVar *var = locals; var; var = var->next) {
-        if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
-            return var;
-        }
-    }
-    return NULL;
 }
 
 // is_variable_char returns true if the given character is a valid first character for a variable.
@@ -245,8 +245,6 @@ Token *tokenize(char *p) {
     head.next = NULL;
     Token *cur = &head;
 
-    locals = calloc(1, sizeof(LocalVar));
-
     // While the next character is not a null character
     while (*p) {
         Token *next = tokenize_next(&p, cur);
@@ -261,7 +259,8 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = stmt*
+program    = func*
+func       = ident "(" (expr ("," expr)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
@@ -294,6 +293,35 @@ Node *new_node_num(int val) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_NUM;
     node->val = val;
+    return node;
+}
+
+// find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
+LocalVar *find_local_var(Token *tok) {
+    for (LocalVar *var = locals; var; var = var->next) {
+        if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
+// new_local_var returns a local variable as node. If this is a new variable, appends it to the list of local variables.
+Node *new_local_var(Token *tok) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_LOCAL_VAR;
+    // determine offset
+    LocalVar *var = find_local_var(tok);
+    if (!var) {
+        // new variable
+        var = calloc(1, sizeof(LocalVar));
+        var->next = locals;
+        var->name = tok->str;
+        var->len = tok->len;
+        var->offset = locals->offset + 8;
+        locals = var;
+    }
+    node->offset = var->offset;
     return node;
 }
 
@@ -334,21 +362,7 @@ Node *primary() {
         }
 
         // Local variable
-        Node *node = calloc(1, sizeof(Node));
-        node->kind = ND_LOCAL_VAR;
-        // determine offset
-        LocalVar *var = find_local_var(tok);
-        if (!var) {
-            // new variable
-            var = calloc(1, sizeof(LocalVar));
-            var->next = locals;
-            var->name = tok->str;
-            var->len = tok->len;
-            var->offset = locals->offset + 8;
-            locals = var;
-        }
-        node->offset = var->offset;
-        return node;
+        return new_local_var(tok);
     }
 
     // Otherwise expect a number.
@@ -539,11 +553,59 @@ Node *stmt() {
     return node;
 }
 
+// func parses the next 'func' (in EBNF) as AST.
+Node *func() {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_FUNC;
+    Token *tok = expect_identifier();
+    node->str = tok->str;
+    node->len = tok->len;
+
+    // current function's local variables, for new_local_var function to append to this
+    locals = calloc(1, sizeof(LocalVar));
+
+    expect("(");
+    // read function arguments
+    while (!consume(")")) {
+        Token *arg = expect_identifier();
+        // treat each function argument as a local variable
+        Node *local_var = new_local_var(arg);
+        node->local_vars = local_var;
+        node->arguments = local_var;
+
+        if (!consume(",")) {
+            expect(")");
+            break;
+        }
+    }
+
+    // parse function body
+    expect("{");
+    Node *block = calloc(1, sizeof(Node));
+    block->kind = ND_BLOCK;
+    Node *cur = block;
+
+    while (!consume("}")) {
+        cur->left = stmt();
+        Node *next = calloc(1, sizeof(Node));
+        next->kind = ND_BLOCK;
+        cur->right = next;
+        cur = next;
+    }
+
+    node->left = block;
+    // final list of local variables after parsing function body
+    Node *local_vars = calloc(1, sizeof(Node));
+    local_vars->kind = ND_LOCAL_VAR;
+    local_vars->offset = locals->offset;
+    node->local_vars = local_vars;
+}
+
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
     int i = 0;
     while (!at_eof()) {
-        code[i++] = stmt();
+        code[i++] = func();
     }
     code[i] = NULL;
 }
