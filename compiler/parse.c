@@ -221,7 +221,7 @@ Token *tokenize_next(char **p, Token *cur) {
     if (is_variable_char(**p)) {
         int len = 0;
         Token *next = new_token(TK_IDENTIFIER, cur, *p);
-        while (is_variable_char(**p)) {
+        while (is_alnum(**p)) {
             len++;
             *p += 1;
         }
@@ -312,7 +312,7 @@ LocalVar *find_local_var(Token *tok) {
 }
 
 // new_local_var returns a local variable as node. If this is a new variable, appends it to the list of local variables.
-Node *new_local_var(Token *tok, Type *type) {
+Node *new_local_var(Token *tok, Type *ty) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_LOCAL_VAR;
     // determine offset
@@ -324,10 +324,11 @@ Node *new_local_var(Token *tok, Type *type) {
         var->name = tok->str;
         var->len = tok->len;
         var->offset = locals->offset + 8;
-        var->type = type;
+        var->type = ty;
         locals = var;
     }
     node->offset = var->offset;
+    node->type = ty;
     return node;
 }
 
@@ -377,6 +378,7 @@ Node *primary() {
             error_at(tok->str, "Variable %.*s has not been declared", tok->len, tok->str);
         }
         node->offset = var->offset;
+        node->type = var->type;
         return node;
     }
 
@@ -647,6 +649,7 @@ Node *func() {
     Node *local_vars = calloc(1, sizeof(Node));
     local_vars->kind = ND_LOCAL_VAR;
     local_vars->offset = locals->offset;
+    local_vars->type = locals->type;
     node->local_vars = local_vars;
 }
 

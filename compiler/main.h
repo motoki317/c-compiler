@@ -72,8 +72,9 @@ struct Node {
     Node *fourth;
     // Value here if the kind is ND_NUM
     int val;
-    // Offset here if the kind is ND_LOCAL_VAR
+    // Offset and type here if the kind is ND_LOCAL_VAR
     int offset;
+    Type *type;
     // Label name sequencing here if the kind is ND_IF, ND_WHILE, or ND_FOR
     int label;
     // Function name if the kind is ND_FUNC_CALL or ND_FUNC

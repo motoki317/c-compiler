@@ -33,6 +33,29 @@ void gen_lvalue(Node *node) {
     error("expected lvalue, but not a local variable");
 }
 
+// multiply_ptr_value multiplies "rdi" register by the type that pointers point to, if the given node represents a pointer.
+// e.g. if the node represents a local variable of type int *, then multiply "rdi" by 4.
+void multiply_ptr_value(Node *node) {
+    if (node->kind != ND_LOCAL_VAR ||
+        node->type == NULL) {
+        return;
+    }
+
+    // left value is a pointer
+    Type *type = node->type;
+    if (type->ty == PTR && type->ptr_to) {
+        // which type this pointer points to
+        switch (type->ptr_to->ty) {
+        case INT:
+            printf("        imul rdi, 4\n");
+            break;
+        case PTR:
+            printf("        imul rdi, 8\n");
+            break;
+        }
+    }
+}
+
 // gen_tree walks the given tree and prints out the assembly calculating the given tree.
 void gen_tree(Node *node) {
     switch (node->kind) {
@@ -254,9 +277,11 @@ void gen_tree(Node *node) {
     switch (node->kind) {
     // Basic arithmetic operations
     case ND_ADD:
+        multiply_ptr_value(node->left);
         printf("        add rax, rdi\n");
         break;
     case ND_SUB:
+        multiply_ptr_value(node->left);
         printf("        sub rax, rdi\n");
         break;
     case ND_MUL:
