@@ -21,7 +21,7 @@ char symbols[][3] = {
 
 char keywords[][8] = {
     "return", "if", "else",
-    "for", "while",
+    "for", "while", "int",
 };
 
 int next_label = 0;
@@ -93,6 +93,14 @@ bool consume(char *op) {
     return true;
 }
 
+// expect precedes to the next token when the current token is the given expected operator.
+// Reports error otherwise.
+void expect(char *op) {
+    if (!consume(op)) {
+        error_at(token->str, "Next token is not \"%s\"\n", op);
+    }
+}
+
 // consume_keyword returns true when the current token is TK_KEYWORD, and precedes to the next token.
 bool consume_keyword(char *keyword) {
     if (token->kind != TK_KEYWORD ||
@@ -102,6 +110,13 @@ bool consume_keyword(char *keyword) {
     }
     token = token->next;
     return true;
+}
+
+// expect_keyword consumes keyword and precedes to the next token. If the expected keyword was not found, raises an error.
+void expect_keyword(char *keyword) {
+    if (!consume_keyword(keyword)) {
+        error_at(token->str, "Expected %s", keyword);
+    }
 }
 
 // consume_identifier consumes the next identifier token if exists, and precedes to the next token.
@@ -116,26 +131,11 @@ Token *consume_identifier() {
 
 // consume_identifier returns the next identifier token, otherwise reports an error.
 Token *expect_identifier() {
-    if (token->kind != TK_IDENTIFIER) {
+    Token *ret = consume_identifier();
+    if (ret == NULL) {
         error_at(token->str, "Next token is not an identifier\n");
     }
-    Token *ret = token;
-    token = token->next;
     return ret;
-}
-
-// expect precedes to the next token when the current token is the given expected operator.
-// Reports error otherwise.
-void expect(char *op) {
-        // next token is not a symbol
-    if (token->kind != TK_RESERVED ||
-        // not correct expected token length
-        strlen(op) != token->len ||
-        // compare the first token->len bytes of two strings
-        memcmp(token->str, op, token->len)) {
-        error_at(token->str, "Next token is not \"%s\"\n", op);
-    }
-    token = token->next;
 }
 
 // expect_number returns number and precedes to the next token when the current token is represents a number.
@@ -260,8 +260,9 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = func*
-func       = ident "(" (expr ("," expr)*)? ")" "{" stmt* "}"
+func       = "int" ident "(" ("int" expr ("," "int" expr)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
+            | "int" ident ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
@@ -277,7 +278,8 @@ unary      = ("+" | "-")? primary
             | "*" unary
             | "&" unary
 primary    = num
-            | ident ("(" (expr ("," expr)*)? ")")?
+            | ident
+            | ident "(" (expr ("," expr)*)? ")"
             | "(" expr ")"
 */
 
@@ -364,7 +366,16 @@ Node *primary() {
         }
 
         // Local variable
-        return new_local_var(tok);
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_LOCAL_VAR;
+        // determine offset
+        LocalVar *var = find_local_var(tok);
+        // If the variable has not been declared, raise an error
+        if (!var) {
+            error_at(tok->str, "Variable %.*s has not been declared", tok->len, tok->str);
+        }
+        node->offset = var->offset;
+        return node;
     }
 
     // Otherwise expect a number.
@@ -470,7 +481,12 @@ Node *expr() {
 Node *stmt() {
     Node *node;
 
-    if (consume_keyword("return")) {
+    if (consume_keyword("int")) {
+        // local variable declaration
+        Token *tok = expect_identifier();
+        expect(";");
+        return new_local_var(tok);
+    } else if (consume_keyword("return")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
         node->left = expr();
@@ -569,6 +585,7 @@ Node *stmt() {
 Node *func() {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
+    expect_keyword("int");
     Token *tok = expect_identifier();
     node->str = tok->str;
     node->len = tok->len;
@@ -579,6 +596,7 @@ Node *func() {
     expect("(");
     // read function arguments
     while (!consume(")")) {
+        expect_keyword("int");
         Token *arg = expect_identifier();
         // treat each function argument as a local variable
         Node *local_var = new_local_var(arg);
