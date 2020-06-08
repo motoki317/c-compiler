@@ -74,6 +74,7 @@ struct Node {
     int val;
     // Offset and type here if the kind is ND_LOCAL_VAR
     int offset;
+    // function return type if the kind is ND_FUNC
     Type *type;
     // Label name sequencing here if the kind is ND_IF, ND_WHILE, or ND_FOR
     int label;

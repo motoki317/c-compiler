@@ -22,6 +22,7 @@ char symbols[][3] = {
 char keywords[][8] = {
     "return", "if", "else",
     "for", "while", "int",
+    "sizeof",
 };
 
 int next_label = 0;
@@ -260,8 +261,8 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = func*
-func       = "int" ident "(" ("int" expr ("," "int" expr)*)? ")" "{" stmt* "}"
 type       = "int" | type "*"
+func       = type ident "(" ("int" expr ("," "int" expr)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
             | type ident ";"
             | "{" stmt* "}"
@@ -275,7 +276,8 @@ equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
-unary      = ("+" | "-")? primary
+unary      = "sizeof" unary
+            | ("+" | "-")? primary
             | "*" unary
             | "&" unary
 primary    = num
@@ -330,6 +332,64 @@ Node *new_local_var(Token *tok, Type *ty) {
     node->offset = var->offset;
     node->type = ty;
     return node;
+}
+
+// new_type constructs struct type with the given type kind.
+Type *new_type(TypeKind kind) {
+    Type *ty = calloc(1, sizeof(Type));
+    ty->ty = kind;
+    return ty;
+}
+
+// type_of returns the type this node represents.
+Type *type_of(Node *node) {
+    if (node->type) {
+        return node->type;
+    }
+
+    switch (node->kind) {
+        case ND_ASSIGN:
+            return type_of(node->left);
+        case ND_EQUAL:
+        case ND_NOT_EQUAL:
+        case ND_LESS_EQUAL:
+        case ND_LESS:
+        case ND_GREATER_EQUAL:
+        case ND_GREATER:
+            return new_type(INT);
+        case ND_ADD:
+        case ND_SUB:
+        case ND_MUL:
+        case ND_DIV:
+            return type_of(node->left);
+        case ND_ADDR: ;
+            Type *to = type_of(node->left);
+            Type *ty = new_type(PTR);
+            ty->ptr_to = to;
+            return ty;
+        case ND_DEREF: ;
+            ty = type_of(node->left);
+            if (ty->ty != PTR) {
+                error_at(node->str, "Dereference not to a pointer");
+            }
+            return ty->ptr_to;
+        case ND_FUNC_CALL: ;
+            int i = 0;
+            while (code[i]) {
+                if (memcmp(code[i]->str, node->str, node->len) == 0) {
+                    return code[i]->type;
+                }
+                i++;
+            }
+            error_at(node->str, "Unknown function");
+        case ND_LOCAL_VAR:
+            if (node->type == NULL) {
+                error_at(node->str, "Local variable of unknown type");
+            }
+            return node->type;
+        case ND_NUM:
+            return new_type(INT);
+    }
 }
 
 Node *expr();
@@ -388,7 +448,16 @@ Node *primary() {
 
 // unary parses the next 'unary' (in EBNF) as AST.
 Node *unary() {
-    if (consume("+")) {
+    if (consume_keyword("sizeof")) {
+        Node *node = unary();
+        Type *ty = type_of(node);
+        switch (ty->ty) {
+        case INT:
+            return new_node_num(4);
+        case PTR:
+            return new_node_num(8);
+        }
+    } else if (consume("+")) {
         return primary();
     } else if (consume("-")) {
         return new_node(ND_SUB, new_node_num(0), primary());
@@ -605,6 +674,8 @@ Node *func() {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
     expect_keyword("int");
+    Type *return_type = type(INT);
+    node->type = return_type;
     Token *tok = expect_identifier();
     node->str = tok->str;
     node->len = tok->len;
@@ -656,6 +727,7 @@ Node *func() {
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
     int i = 0;
+    memset(code, 0, sizeof(code));
     while (!at_eof()) {
         code[i++] = func();
     }
