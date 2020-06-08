@@ -14,16 +14,23 @@ void error(char *message) {
     exit(1);
 }
 
+void gen_tree();
+
 // gen_lvalue evaluates the next lvalue (prints error and exists if not), and pushes the address to the stack.
 void gen_lvalue(Node *node) {
-    if (node->kind != ND_LOCAL_VAR) {
-        error("expected lvalue, but not a local variable");
+    switch(node->kind) {
+    case ND_LOCAL_VAR:
+        // calculate the variable address
+        printf("        mov rax, rbp\n");
+        printf("        sub rax, %d\n", node->offset);
+        printf("        push rax\n");
+        return;
+    case ND_DEREF:
+        gen_tree(node->left);
+        return;
     }
 
-    // calculate the variable address
-    printf("        mov rax, rbp\n");
-    printf("        sub rax, %d\n", node->offset);
-    printf("        push rax\n");
+    error("expected lvalue, but not a local variable");
 }
 
 // gen_tree walks the given tree and prints out the assembly calculating the given tree.

@@ -6,6 +6,19 @@ extern char *user_input;
 // Current token
 extern Token *token;
 
+typedef struct Type Type;
+
+typedef enum {
+    INT,
+    PTR,
+} TypeKind;
+
+// Variable type
+struct Type {
+  TypeKind ty;
+  struct Type *ptr_to;
+};
+
 typedef struct LocalVar LocalVar;
 
 // Local variables as linked list
@@ -17,6 +30,8 @@ struct LocalVar {
     int len;
     // offset from rbp
     int offset;
+    // type
+    Type *type;
 };
 
 Token *tokenize(char *p);

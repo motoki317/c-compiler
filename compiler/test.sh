@@ -64,4 +64,6 @@ assert 10 "int tarai(int x, int y, int z) { if (x <= y) return y; return tarai(t
 
 assert 3 "int main() { int x; x = 3; int y; y = &x; return *y; }"
 
+assert 3 "int main() { int x; int *y; y = &x; *y = 3; return x; }"
+
 echo "OK"

@@ -261,8 +261,9 @@ Token *tokenize(char *p) {
 Program syntax in EBNF
 program    = func*
 func       = "int" ident "(" ("int" expr ("," "int" expr)*)? ")" "{" stmt* "}"
+type       = "int" | type "*"
 stmt       = expr ";"
-            | "int" ident ";"
+            | type ident ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
@@ -311,7 +312,7 @@ LocalVar *find_local_var(Token *tok) {
 }
 
 // new_local_var returns a local variable as node. If this is a new variable, appends it to the list of local variables.
-Node *new_local_var(Token *tok) {
+Node *new_local_var(Token *tok, Type *type) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_LOCAL_VAR;
     // determine offset
@@ -323,6 +324,7 @@ Node *new_local_var(Token *tok) {
         var->name = tok->str;
         var->len = tok->len;
         var->offset = locals->offset + 8;
+        var->type = type;
         locals = var;
     }
     node->offset = var->offset;
@@ -477,15 +479,30 @@ Node *expr() {
     return assign();
 }
 
+// type parses the variable type.
+Type *type(TypeKind base) {
+    if (consume("*")) {
+        Type *ty = calloc(1, sizeof(Type));
+        ty->ty = PTR;
+        ty->ptr_to = type(base);
+        return ty;
+    }
+    Type *ty = calloc(1, sizeof(Type));
+    ty->ty = base;
+    return ty;
+}
+
 // stmt parses the next 'stmt' (in EBNF) as AST.
 Node *stmt() {
     Node *node;
 
     if (consume_keyword("int")) {
         // local variable declaration
+        // parse type
+        Type *ty = type(INT);
         Token *tok = expect_identifier();
         expect(";");
-        return new_local_var(tok);
+        return new_local_var(tok, ty);
     } else if (consume_keyword("return")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
@@ -597,9 +614,11 @@ Node *func() {
     // read function arguments
     while (!consume(")")) {
         expect_keyword("int");
+        // parse type
+        Type *ty = type(INT);
         Token *arg = expect_identifier();
         // treat each function argument as a local variable
-        Node *local_var = new_local_var(arg);
+        Node *local_var = new_local_var(arg, ty);
         node->local_vars = local_var;
         node->arguments = local_var;
 
