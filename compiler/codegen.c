@@ -17,7 +17,7 @@ void error(char *message) {
 // gen_lvalue evaluates the next lvalue (prints error and exists if not), and pushes the address to the stack.
 void gen_lvalue(Node *node) {
     if (node->kind != ND_LOCAL_VAR) {
-        error("lvalue in assignment is not a local variable");
+        error("expected lvalue, but not a local variable");
     }
 
     // calculate the variable address
@@ -58,6 +58,16 @@ void gen_tree(Node *node) {
         printf("        mov rsp, rbp\n");
         printf("        pop rbp\n");
         printf("        ret\n");
+        return;
+    case ND_ADDR:
+        gen_lvalue(node->left);
+        return;
+    case ND_DEREF:
+        gen_tree(node->left);
+
+        printf("        pop rax\n");
+        printf("        mov rax, [rax]\n");
+        printf("        push rax\n");
         return;
     case ND_IF:
         gen_tree(node->left);

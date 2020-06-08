@@ -16,7 +16,7 @@ char symbols[][3] = {
     "(", ")",
     ";", "=",
     "{", "}",
-    ",",
+    ",", "&",
 };
 
 char keywords[][8] = {
@@ -274,6 +274,8 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = ("+" | "-")? primary
+            | "*" unary
+            | "&" unary
 primary    = num
             | ident ("(" (expr ("," expr)*)? ")")?
             | "(" expr ")"
@@ -375,6 +377,16 @@ Node *unary() {
         return primary();
     } else if (consume("-")) {
         return new_node(ND_SUB, new_node_num(0), primary());
+    } else if (consume("*")) {
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_DEREF;
+        node->left = unary();
+        return node;
+    } else if (consume("&")) {
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_ADDR;
+        node->left = unary();
+        return node;
     } else {
         return primary();
     }

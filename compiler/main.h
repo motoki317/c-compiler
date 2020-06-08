@@ -34,6 +34,8 @@ typedef enum {
     ND_SUB, // -
     ND_MUL, // *
     ND_DIV, // /
+    ND_ADDR, // &
+    ND_DEREF, // *
     ND_FUNC, // function
     ND_FUNC_CALL, // function call
     ND_RETURN, // "return" statement

@@ -62,4 +62,6 @@ assert 7 "main() { i = 2; if (i == 2) { i = i + 1; i = i * 2 + 1; } return i; }"
 assert 13 "fib(x) { if (x <= 1) return x; return fib(x - 1) + fib(x - 2); } main() { return fib(7); }"
 assert 10 "tarai(x, y, z) { if (x <= y) return y; return tarai(tarai(x - 1, y, z), tarai(y - 1, z, x), tarai(z - 1, x, y)); } main() { return tarai(10, 6, 0); }"
 
+assert 3 "main() { x = 3; y = &x; return *y; }"
+
 echo "OK"
