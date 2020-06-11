@@ -285,6 +285,7 @@ unary      = "sizeof" unary
 primary    = num
             | ident
             | ident "(" (expr ("," expr)*)? ")"
+            | ident "[" expr "]"
             | "(" expr ")"
 */
 
@@ -462,6 +463,21 @@ Node *primary() {
         }
         node->offset = var->offset;
         node->type = var->type;
+
+        if (consume("[")) {
+            // parse "a[b]" syntax (array indexing) as "*(a + b)"
+            Node *parent = calloc(1, sizeof(Node));
+            Node *right = expr();
+            expect("]");
+
+            parent->kind = ND_DEREF;
+            Node *adder = calloc(1, sizeof(Node));
+            adder->kind = ND_ADD;
+            adder->left = node;
+            adder->right = right;
+            parent->left = adder;
+            return parent;
+        }
         return node;
     }
 
