@@ -17,6 +17,7 @@ char symbols[][3] = {
     ";", "=",
     "{", "}",
     ",", "&",
+    "[", "]",
 };
 
 char keywords[][8] = {
@@ -261,10 +262,11 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = func*
-type       = "int" | type "*"
-func       = type ident "(" ("int" expr ("," "int" expr)*)? ")" "{" stmt* "}"
+ptr_type   = "int" | type "*"
+var        = ptr_type ident ("[" num "]")*
+func       = "int" "(" (var ("," var)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
-            | type ident ";"
+            | var ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
@@ -313,6 +315,14 @@ LocalVar *find_local_var(Token *tok) {
     return NULL;
 }
 
+size_t max(size_t a, size_t b) {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
 // new_local_var returns a local variable as node. If this is a new variable, appends it to the list of local variables.
 Node *new_local_var(Token *tok, Type *ty) {
     Node *node = calloc(1, sizeof(Node));
@@ -325,7 +335,7 @@ Node *new_local_var(Token *tok, Type *ty) {
         var->next = locals;
         var->name = tok->str;
         var->len = tok->len;
-        var->offset = locals->offset + 8;
+        var->offset = locals->offset + max(size_of(ty), 8);
         var->type = ty;
         locals = var;
     }
@@ -389,6 +399,19 @@ Type *type_of(Node *node) {
             return node->type;
         case ND_NUM:
             return new_type(INT);
+    }
+}
+
+// size_of returns the size of the given type in bytes.
+size_t size_of(Type *ty) {
+    switch (ty->ty) {
+    case INT:
+        // TODO: handle int as 32-bit
+        return 8;
+    case PTR:
+        return 8;
+    case ARRAY:
+        return ty->array_size * size_of(ty->ptr_to);
     }
 }
 
@@ -550,17 +573,41 @@ Node *expr() {
     return assign();
 }
 
-// type parses the variable type.
-Type *type(TypeKind base) {
+// ptr_type parses the (pointer part of the) type.
+Type *ptr_type(TypeKind base) {
     if (consume("*")) {
         Type *ty = calloc(1, sizeof(Type));
         ty->ty = PTR;
-        ty->ptr_to = type(base);
+        ty->ptr_to = ptr_type(base);
         return ty;
     }
     Type *ty = calloc(1, sizeof(Type));
     ty->ty = base;
     return ty;
+}
+
+// array_type parses the (array part of the) type.
+Type *array_type(Type *base) {
+     if (consume("[")) {
+        int size = expect_number();
+        if (size < 0) {
+            error_at(token->str, "Array size must not be negative");
+        }
+        expect("]");
+        Type *ty = calloc(1, sizeof(Type));
+        ty->ty = ARRAY;
+        ty->ptr_to = array_type(base);
+        return ty;
+    }
+    return base;
+}
+
+// var parses the next 'var' (in EBNF) as AST.
+Node *var(TypeKind base) {
+    Type *ptr_ty = ptr_type(base);
+    Token *tok = expect_identifier();
+    Type *ty = array_type(ptr_ty);
+    return new_local_var(tok, ty);
 }
 
 // stmt parses the next 'stmt' (in EBNF) as AST.
@@ -570,10 +617,9 @@ Node *stmt() {
     if (consume_keyword("int")) {
         // local variable declaration
         // parse type
-        Type *ty = type(INT);
-        Token *tok = expect_identifier();
+        node = var(INT);
         expect(";");
-        return new_local_var(tok, ty);
+        return node;
     } else if (consume_keyword("return")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
@@ -674,7 +720,7 @@ Node *func() {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
     expect_keyword("int");
-    Type *return_type = type(INT);
+    Type *return_type = ptr_type(INT);
     node->type = return_type;
     Token *tok = expect_identifier();
     node->str = tok->str;
@@ -685,21 +731,23 @@ Node *func() {
 
     expect("(");
     // read function arguments
+    // arguments as a linked list
+    Node arguments_head;
+    arguments_head.left = NULL;
+    Node *arguments_cur = &arguments_head;
     while (!consume(")")) {
         expect_keyword("int");
-        // parse type
-        Type *ty = type(INT);
-        Token *arg = expect_identifier();
         // treat each function argument as a local variable
-        Node *local_var = new_local_var(arg, ty);
-        node->local_vars = local_var;
-        node->arguments = local_var;
+        Node *local_var = var(INT);
+        arguments_cur->left = local_var;
+        arguments_cur = local_var;
 
         if (!consume(",")) {
             expect(")");
             break;
         }
     }
+    node->arguments = arguments_head.left;
 
     // parse function body
     expect("{");
@@ -721,7 +769,7 @@ Node *func() {
     local_vars->kind = ND_LOCAL_VAR;
     local_vars->offset = locals->offset;
     local_vars->type = locals->type;
-    node->local_vars = local_vars;
+    node->offset = locals->offset;
 }
 
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.

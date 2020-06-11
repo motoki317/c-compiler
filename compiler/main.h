@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 struct Token;
 typedef struct Token Token;
 
@@ -11,13 +13,19 @@ typedef struct Type Type;
 typedef enum {
     INT,
     PTR,
+    ARRAY,
 } TypeKind;
 
 // Variable type
 struct Type {
   TypeKind ty;
+  // pointer to / array of what type
   struct Type *ptr_to;
+  size_t array_size;
 };
+
+// size_of returns the size of the given type.
+size_t size_of(Type *ty);
 
 typedef struct LocalVar LocalVar;
 
@@ -72,7 +80,8 @@ struct Node {
     Node *fourth;
     // Value here if the kind is ND_NUM
     int val;
-    // Offset and type here if the kind is ND_LOCAL_VAR
+    // Offset and type here if the kind is ND_LOCAL_VAR,
+    // total local vars offset here if the kind is ND_FUNC
     int offset;
     // function return type if the kind is ND_FUNC
     Type *type;
@@ -81,9 +90,8 @@ struct Node {
     // Function name if the kind is ND_FUNC_CALL or ND_FUNC
     char *str;
     int len;
-    // Local variables if the kind is ND_FUNC
-    Node *local_vars;
     // List of function arguments if the kind is ND_FUNC
+    // as a linked list - the first one here, the next one in left
     Node *arguments;
 };
 

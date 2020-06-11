@@ -7,6 +7,9 @@
 char arguments[6][4] = {
     "rdi", "rsi", "rdx", "rcx", "r8", "r9",
 };
+char arguments_32[6][4] = {
+    "edi", "esi", "edx", "ecx", "r8d", "r9d",
+};
 
 // Reports error at the given location
 void error(char *message) {
@@ -26,6 +29,7 @@ void gen_lvalue(Node *node) {
         printf("        push rax\n");
         return;
     case ND_DEREF:
+        // assigning to de-referenced values, e.g. *p = 5;
         gen_tree(node->left);
         return;
     }
@@ -43,16 +47,10 @@ void multiply_ptr_value(Node *node) {
 
     // left value is a pointer
     Type *type = node->type;
-    if (type->ty == PTR && type->ptr_to) {
-        // which type this pointer points to
-        switch (type->ptr_to->ty) {
-        case INT:
-            printf("        imul rdi, 4\n");
-            break;
-        case PTR:
-            printf("        imul rdi, 8\n");
-            break;
-        }
+    if ((type->ty == PTR || type->ty == ARRAY) && type->ptr_to) {
+        // which type this pointer points to / this array is composed of
+        size_t ptr_to_size = size_of(type->ptr_to);
+        printf("        imul rdi, %ld\n", ptr_to_size);
     }
 }
 
@@ -65,6 +63,12 @@ void gen_tree(Node *node) {
     case ND_LOCAL_VAR:
         // evaluate the variable
         gen_lvalue(node);
+
+        // If the local var type is an array, leave it as an address
+        // i.e. implicit conversion of array to pointer to its first member
+        if (node->type && node->type->ty == ARRAY) {
+            return;
+        }
 
         printf("        pop rax\n");
         printf("        mov rax, [rax]\n");
@@ -234,23 +238,29 @@ void gen_tree(Node *node) {
         printf("        push rbp\n");
         printf("        mov rbp, rsp\n");
         // allocate local variables
-        if (node->local_vars) {
-            printf("        sub rsp, %d\n", node->local_vars->offset);
+        if (node->offset > 0) {
+            printf("        sub rsp, %d\n", node->offset);
         }
 
         // Copy function arguments from registers to stack
         Node *next_arg = node->arguments;
         if (next_arg) {
             // argument index
-            for (int i = next_arg->offset / 8 - 1; i >= 0; i--) {
-                // evaluate place as local variable
-                // note: forcefully rewriting the offset here, not a good practice
-                next_arg->offset = (i + 1) * 8;
+            int i = 0;
+            for (; next_arg; next_arg = next_arg->left) {
+                // evaluate address of the local variable in stack
                 gen_lvalue(next_arg);
                 printf("        pop rax\n");
+                // support up to 6 arguments to load from registers
                 if (i < 6) {
-                    printf("        mov [rax], %s\n", arguments[i]);
+                    // check if the argument is 32-bit or 64-bit wide
+                    if (size_of(next_arg->type) == 4) {
+                        printf("        mov [rax], %s\n", arguments_32[i]);
+                    } else {
+                        printf("        mov [rax], %s\n", arguments[i]);
+                    }
                 }
+                i++;
             }
         }
 
