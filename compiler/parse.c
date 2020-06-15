@@ -54,7 +54,11 @@ struct Token {
     int len;
 };
 
+// Current function's local variables
 LocalVar *locals;
+
+// Global variables as a linked list
+GlobalVar *globals;
 
 // Whole user input
 char *user_input;
@@ -261,10 +265,10 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = func*
+program    = (var ";" | func)*
 ptr_type   = "int" | type "*"
 var        = ptr_type ident ("[" num "]")*
-func       = "int" "(" (var ("," var)*)? ")" "{" stmt* "}"
+func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
             | var ";"
             | "{" stmt* "}"
@@ -309,6 +313,16 @@ Node *new_node_num(int val) {
 // find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
 LocalVar *find_local_var(Token *tok) {
     for (LocalVar *var = locals; var; var = var->next) {
+        if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
+// find_global_var returns global var if the global var has already been declared; returns NULL otherwise.
+GlobalVar *find_global_var(Token *tok) {
+    for (GlobalVar *var = globals; var; var = var->next) {
         if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
             return var;
         }
@@ -452,17 +466,23 @@ Node *primary() {
             return node;
         }
 
-        // Local variable
+        // Local variable or global variable
         Node *node = calloc(1, sizeof(Node));
-        node->kind = ND_LOCAL_VAR;
-        // determine offset
         LocalVar *var = find_local_var(tok);
+        if (var) {
+            node->kind = ND_LOCAL_VAR;
+        } else {
+            var = find_global_var(tok);
+            node->kind = ND_GLOBAL_VAR;
+        }
         // If the variable has not been declared, raise an error
         if (!var) {
             error_at(tok->str, "Variable %.*s has not been declared", tok->len, tok->str);
         }
         node->offset = var->offset;
         node->type = var->type;
+        node->str = var->name;
+        node->len = var->len;
 
         if (consume("[")) {
             // parse "a[b]" syntax (array indexing) as "*(a + b)"
@@ -732,20 +752,16 @@ Node *stmt() {
 }
 
 // func parses the next 'func' (in EBNF) as AST.
-Node *func() {
+Node *func(Type *return_type, Token *name) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
-    expect_keyword("int");
-    Type *return_type = ptr_type(INT);
     node->type = return_type;
-    Token *tok = expect_identifier();
-    node->str = tok->str;
-    node->len = tok->len;
+    node->str = name->str;
+    node->len = name->len;
 
     // current function's local variables, for new_local_var function to append to this
     locals = calloc(1, sizeof(LocalVar));
 
-    expect("(");
     // read function arguments
     // arguments as a linked list
     Node arguments_head;
@@ -788,12 +804,41 @@ Node *func() {
     node->offset = locals->offset;
 }
 
+// global parses the next global variable and defines it.
+void global(Type *ptr_ty, Token *name) {
+    Type *ty = array_type(ptr_ty);
+    // Check if the name has already been used
+    if (find_global_var(name)) {
+        error_at(name->str, "Global variable %.*s has already been declared", name->len, name->str);
+    }
+
+    GlobalVar *var = calloc(1, sizeof(LocalVar));
+    var->next = globals;
+    var->name = name->str;
+    var->len = name->len;
+    var->offset = max(size_of(ty), 8);
+    var->type = ty;
+    globals = var;
+}
+
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
+    globals = NULL;
+
     int i = 0;
     memset(code, 0, sizeof(code));
     while (!at_eof()) {
-        code[i++] = func();
+        // Check if the next token is a global variable, or a function.
+        expect_keyword("int");
+        Type *type = ptr_type(INT);
+        Token *tok = expect_identifier();
+
+        if (consume("(")) {
+            code[i++] = func(type, tok);
+        } else {
+            global(type, tok);
+            expect(";");
+        }
     }
     code[i] = NULL;
 }

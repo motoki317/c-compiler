@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // register names
 char arguments[6][4] = {
@@ -12,8 +13,11 @@ char arguments_32[6][4] = {
 };
 
 // Reports error at the given location
-void error(char *message) {
-    fprintf(stderr, "%s\n", message);
+void error(char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
     exit(1);
 }
 
@@ -28,13 +32,17 @@ void gen_lvalue(Node *node) {
         printf("        sub rax, %d\n", node->offset);
         printf("        push rax\n");
         return;
+    case ND_GLOBAL_VAR:
+        printf("        lea rax, %.*s[rip]\n", node->len, node->str);
+        printf("        push rax\n");
+        return;
     case ND_DEREF:
         // assigning to de-referenced values, e.g. *p = 5;
         gen_tree(node->left);
         return;
     }
 
-    error("expected lvalue, but not a local variable");
+    error("expected lvalue, but got node kind %s", node->kind);
 }
 
 // multiply_ptr_value multiplies "rdi" register by the type that pointers point to, if the given node represents a pointer.
@@ -61,6 +69,7 @@ void gen_tree(Node *node) {
         printf("        push %d\n", node->val);
         return;
     case ND_LOCAL_VAR:
+    case ND_GLOBAL_VAR:
         // evaluate the variable
         gen_lvalue(node);
 
@@ -354,6 +363,15 @@ void gen() {
     // Base assembly syntax
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
+
+    // Print out global variables
+    for (GlobalVar *var = globals; var; var = var->next) {
+        // to binary
+        printf(".bss\n");
+        printf("%.*s:\n", var->len, var->name);
+        printf("        .zero %d\n", var->offset);
+        printf("        .text\n");
+    }
 
     // Calculate the result for each functions
     for (int i = 0; code[i]; i++) {

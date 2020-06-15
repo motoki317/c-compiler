@@ -79,4 +79,8 @@ assert 3 "int main() { int a[2]; *(a + 1) = 2; *a = 1; int *p; p = a; return *p 
 
 assert 3 "int main() { int a[2]; a[0] = 1; a[1] = 2; int *p; p = a; return a[0] + a[1]; }"
 
+assert 57 "int x; int main() { x = 57; return x; }"
+assert 110 "int a; int main() { int *p; p = &a; *p = 110; return *p; }"
+assert 8 "int a[2]; int main() { int x; x = 5; a[0] = 1; a[1] = 2; int *p; p = a; return p[0] + a[1] + x; }"
+
 echo "OK"
