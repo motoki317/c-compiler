@@ -83,4 +83,6 @@ assert 57 "int x; int main() { x = 57; return x; }"
 assert 110 "int a; int main() { int *p; p = &a; *p = 110; return *p; }"
 assert 8 "int a[2]; int main() { int x; x = 5; a[0] = 1; a[1] = 2; int *p; p = a; return p[0] + a[1] + x; }"
 
+assert 18 "int y[3]; int main() { int x; x = 5; int i; for (i = 0; i < 3; i = i + 1) { y[i] = i * 3 + 3; } if (x == 5) { return y[0] + y[1] + y[2]; } else { return y[0] + y[1]; } }"
+
 echo "OK"

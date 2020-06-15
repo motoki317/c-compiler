@@ -632,6 +632,7 @@ Type *array_type(Type *base) {
         expect("]");
         Type *ty = calloc(1, sizeof(Type));
         ty->ty = ARRAY;
+        ty->array_size = size;
         ty->ptr_to = array_type(base);
         return ty;
     }
