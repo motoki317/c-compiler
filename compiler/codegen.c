@@ -15,7 +15,7 @@ char arguments_8[6][4] = {
     "dil", "sil", "dl", "cl", "r8b", "r9b",
 };
 
-// Reports error at the given location
+// Reports error
 void error(char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -88,6 +88,10 @@ void gen_tree(Node *node) {
     switch (node->kind) {
     case ND_NUM:
         printf("        push %d\n", node->val);
+        return;
+    case ND_STRING:
+        printf("        lea rax, .LC%d[rip]\n", node->label);
+        printf("        push rax\n");
         return;
     case ND_LOCAL_VAR:
     case ND_GLOBAL_VAR:
@@ -405,8 +409,16 @@ void gen() {
         printf("        .text\n");
     }
 
+    // Print out string literals
+    for (int i = 0; i < vector_count(strings); i++) {
+        Node *literal = (Node*) vector_get(strings, i);
+        printf(".text\n");
+        printf(".LC%d:\n", i);
+        printf("        .string \"%.*s\"\n", literal->len, literal->str);
+    }
+
     // Calculate the result for each functions
-    for (int i = 0; code[i]; i++) {
-        gen_tree(code[i]);
+    for (int i = 0; i < vector_count(code); i++) {
+        gen_tree(vector_get(code, i));
     }
 }

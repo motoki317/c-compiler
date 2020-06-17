@@ -88,6 +88,7 @@ typedef enum {
     ND_BLOCK, // "{ ~ }" block statement
     ND_LOCAL_VAR, // Local variable
     ND_GLOBAL_VAR, // Global variable
+    ND_STRING, // String literal
     ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
 } NodeKind;
 
@@ -107,9 +108,11 @@ struct Node {
     // function return type if the kind is ND_FUNC
     Type *type;
     // Label name sequencing here if the kind is ND_IF, ND_WHILE, or ND_FOR
+    // String literal label name here if the kind is ND_STRING
     int label;
     // Function name if the kind is ND_FUNC_CALL or ND_FUNC
     // Variable name here if the kind is ND_LOCAL_VAR or ND_GLOBAL_VAR
+    // String literal here if the kind is ND_STRING
     char *str;
     int len;
     // List of function arguments if the kind is ND_FUNC or ND_FUNC_CALL, elements: Node*
@@ -121,12 +124,15 @@ size_t size_of(Type *ty);
 // type_of returns the type of the given node.
 Type *type_of(Node *node);
 
-extern Node *code[100];
+// Code vector, elements: Node*
+extern Vector *code;
 
 typedef LocalVar GlobalVar;
-// Global variables
-// elements: GlobalVar*
+// Global variables, elements: GlobalVar*
 extern Vector *globals;
+
+// String literals
+extern Vector *strings;
 
 void program();
 

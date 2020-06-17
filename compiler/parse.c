@@ -37,6 +37,8 @@ typedef enum {
     TK_IDENTIFIER,
     // Number
     TK_NUM,
+    // String literal
+    TK_STRING,
     // End of the tokens
     TK_EOF,
 } TokenKind;
@@ -69,7 +71,10 @@ char *user_input;
 Token *token;
 
 // Each statements
-Node *code[100];
+Vector *code;
+
+// String literals
+Vector *strings;
 
 // Reports error at the given location
 void error_at(char *loc, char *fmt, ...) {
@@ -86,7 +91,7 @@ void error_at(char *loc, char *fmt, ...) {
     exit(1);
 }
 
-// consume returns true when the current token is the given expected operator, and precedes to the next token.
+// consume returns true when the current token is the given expected operator, and proceeds to the next token.
 // Returns false otherwise.
 bool consume(char *op) {
         // next token is not a symbol
@@ -101,7 +106,7 @@ bool consume(char *op) {
     return true;
 }
 
-// expect precedes to the next token when the current token is the given expected operator.
+// expect proceeds to the next token when the current token is the given expected operator.
 // Reports error otherwise.
 void expect(char *op) {
     if (!consume(op)) {
@@ -109,7 +114,7 @@ void expect(char *op) {
     }
 }
 
-// consume_keyword returns true when the current token is TK_KEYWORD, and precedes to the next token.
+// consume_keyword returns true when the current token is TK_KEYWORD, and proceeds to the next token.
 bool consume_keyword(char *keyword) {
     if (token->kind != TK_KEYWORD ||
         strlen(keyword) != token->len ||
@@ -120,14 +125,14 @@ bool consume_keyword(char *keyword) {
     return true;
 }
 
-// expect_keyword consumes keyword and precedes to the next token. If the expected keyword was not found, raises an error.
+// expect_keyword consumes keyword and proceeds to the next token. If the expected keyword was not found, raises an error.
 void expect_keyword(char *keyword) {
     if (!consume_keyword(keyword)) {
         error_at(token->str, "Expected %s", keyword);
     }
 }
 
-// consume_identifier consumes the next identifier token if exists, and precedes to the next token.
+// consume_identifier consumes the next identifier token if exists, and proceed to the next token.
 Token *consume_identifier() {
     if (token->kind != TK_IDENTIFIER) {
         return NULL;
@@ -146,7 +151,17 @@ Token *expect_identifier() {
     return ret;
 }
 
-// expect_number returns number and precedes to the next token when the current token is represents a number.
+// consume_string returns the next string literal and proceeds to the next token, if found.
+Token *consume_string() {
+    if (token->kind != TK_STRING) {
+        return NULL;
+    }
+    Token *ret = token;
+    token = token->next;
+    return ret;
+}
+
+// expect_number returns number and proceed to the next token when the current token is represents a number.
 // Reports error otherwise.
 int expect_number() {
     if (token->kind != TK_NUM) {
@@ -244,6 +259,24 @@ Token *tokenize_next(char **p, Token *cur) {
         return next;
     }
 
+    // Check for string literal (quoted in double quote " character)
+    if (**p == '"') {
+        *p += 1;
+        Token *literal = new_token(TK_STRING, cur, *p);
+        int len = 0;
+        while (**p != '"') {
+            if (**p == '\0') {
+                error_at(literal->str, "unexpected EOF in string literal");
+            }
+            len++;
+            *p += 1;
+        }
+        // consume the last double quote " character
+        *p += 1;
+        literal->len = len;
+        return literal;
+    }
+
     error_at(*p, "Cannot tokenize");
 }
 
@@ -290,6 +323,7 @@ unary      = "sizeof" unary
             | "&" unary
 primary    = num
             | ident
+            | string_literal
             | ident "(" (expr ("," expr)*)? ")"
             | ident "[" expr "]"
             | "(" expr ")"
@@ -396,13 +430,12 @@ Type *type_of(Node *node) {
                 error_at(node->str, "Dereference not to a pointer or an array");
             }
             return ty->ptr_to;
-        case ND_FUNC_CALL: ;
-            int i = 0;
-            while (code[i]) {
-                if (memcmp(code[i]->str, node->str, node->len) == 0) {
-                    return code[i]->type;
+        case ND_FUNC_CALL:
+            for (int i = 0; i < vector_count(code); i++) {
+                Node *stmt = (Node*) vector_get(code, i);
+                if (memcmp(stmt->str, node->str, node->len) == 0) {
+                    return stmt->type;
                 }
-                i++;
             }
             error_at(node->str, "Unknown function");
         case ND_GLOBAL_VAR:
@@ -413,6 +446,12 @@ Type *type_of(Node *node) {
             return node->type;
         case ND_NUM:
             return new_type(INT);
+        case ND_STRING:
+            ty = new_type(ARRAY);
+            ty->ptr_to = new_type(CHAR);
+            // +1: null sequence
+            ty->array_size = node->len + 1;
+            return ty;
     }
 
     error_at(node->str, "unknown type at %.*s", node->len, node->str);
@@ -443,8 +482,19 @@ Node *primary() {
         return node;
     }
 
+    // String literal
+    Token *tok = consume_string();
+    if (tok) {
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_STRING;
+        node->str = tok->str;
+        node->len = tok->len;
+        vector_add(strings, node);
+        return node;
+    }
+
     // If the next token is identifier (local variable), consume it.
-    Token *tok = consume_identifier();
+    tok = consume_identifier();
     if (tok) {
         // Function call
         if (consume("(")) {
@@ -827,22 +877,23 @@ void global(Type *ptr_ty, Token *name) {
 
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
+    code = new_vector();
     globals = new_vector();
+    strings = new_vector();
 
-    int i = 0;
-    memset(code, 0, sizeof(code));
     while (!at_eof()) {
         // Check if the next token is a global variable, or a function.
-        expect_keyword("int");
-        Type *type = ptr_type(INT);
+        Type *base_ty = base_type();
+        Type *type = ptr_type(base_ty->ty);
         Token *tok = expect_identifier();
 
         if (consume("(")) {
-            code[i++] = func(type, tok);
+            // function
+            vector_add(code, func(type, tok));
         } else {
+            // global variable
             global(type, tok);
             expect(";");
         }
     }
-    code[i] = NULL;
 }
