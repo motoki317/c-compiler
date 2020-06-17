@@ -1,5 +1,7 @@
 #include <stddef.h>
 
+// parse.c
+
 struct Token;
 typedef struct Token Token;
 
@@ -11,6 +13,7 @@ extern Token *token;
 typedef struct Type Type;
 
 typedef enum {
+    CHAR,
     INT,
     PTR,
     ARRAY,
@@ -23,9 +26,6 @@ struct Type {
   struct Type *ptr_to;
   size_t array_size;
 };
-
-// size_of returns the size of the given type.
-size_t size_of(Type *ty);
 
 typedef struct LocalVar LocalVar;
 
@@ -97,6 +97,11 @@ struct Node {
     Node *arguments;
 };
 
+// size_of returns the size of the given type.
+size_t size_of(Type *ty);
+// type_of returns the type of the given node.
+Type *type_of(Node *node);
+
 extern Node *code[100];
 
 typedef LocalVar GlobalVar;
@@ -104,5 +109,7 @@ typedef LocalVar GlobalVar;
 extern GlobalVar *globals;
 
 void program();
+
+// codegen.c
 
 void gen();

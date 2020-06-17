@@ -23,7 +23,7 @@ char symbols[][3] = {
 char keywords[][8] = {
     "return", "if", "else",
     "for", "while", "int",
-    "sizeof",
+    "sizeof", "char",
 };
 
 int next_label = 0;
@@ -266,7 +266,7 @@ Token *tokenize(char *p) {
 /**
 Program syntax in EBNF
 program    = (var ";" | func)*
-ptr_type   = "int" | type "*"
+ptr_type   = "int" | "char" | type "*"
 var        = ptr_type ident ("[" num "]")*
 func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
@@ -350,7 +350,7 @@ Node *new_local_var(Token *tok, Type *ty) {
         var->next = locals;
         var->name = tok->str;
         var->len = tok->len;
-        var->offset = locals->offset + max(size_of(ty), 8);
+        var->offset = locals->offset + size_of(ty);
         var->type = ty;
         locals = var;
     }
@@ -394,8 +394,9 @@ Type *type_of(Node *node) {
             return ty;
         case ND_DEREF: ;
             ty = type_of(node->left);
-            if (ty->ty != PTR) {
-                error_at(node->str, "Dereference not to a pointer");
+            // implicit conversion of array to pointer
+            if (ty->ty != PTR && ty->ty != ARRAY) {
+                error_at(node->str, "Dereference not to a pointer or an array");
             }
             return ty->ptr_to;
         case ND_FUNC_CALL: ;
@@ -407,6 +408,7 @@ Type *type_of(Node *node) {
                 i++;
             }
             error_at(node->str, "Unknown function");
+        case ND_GLOBAL_VAR:
         case ND_LOCAL_VAR:
             if (node->type == NULL) {
                 error_at(node->str, "Local variable of unknown type");
@@ -415,14 +417,17 @@ Type *type_of(Node *node) {
         case ND_NUM:
             return new_type(INT);
     }
+
+    error_at(node->str, "unknown type at %.*s", node->len, node->str);
 }
 
 // size_of returns the size of the given type in bytes.
 size_t size_of(Type *ty) {
     switch (ty->ty) {
+    case CHAR:
+        return 1;
     case INT:
-        // TODO: handle int as 32-bit
-        return 8;
+        return 4;
     case PTR:
         return 8;
     case ARRAY:
@@ -509,13 +514,7 @@ Node *primary() {
 Node *unary() {
     if (consume_keyword("sizeof")) {
         Node *node = unary();
-        Type *ty = type_of(node);
-        switch (ty->ty) {
-        case INT:
-            return new_node_num(4);
-        case PTR:
-            return new_node_num(8);
-        }
+        return new_node_num(size_of(type_of(node)));
     } else if (consume("+")) {
         return primary();
     } else if (consume("-")) {
@@ -609,6 +608,17 @@ Node *expr() {
     return assign();
 }
 
+// base_type consumes the next token and returns the base type if found.
+// Returns NULL otherwise.
+Type *base_type() {
+    if (consume_keyword("int")) {
+        return new_type(INT);
+    } else if (consume_keyword("char")) {
+        return new_type(CHAR);
+    }
+    return NULL;
+}
+
 // ptr_type parses the (pointer part of the) type.
 Type *ptr_type(TypeKind base) {
     if (consume("*")) {
@@ -651,10 +661,10 @@ Node *var(TypeKind base) {
 Node *stmt() {
     Node *node;
 
-    if (consume_keyword("int")) {
+    Type *base_ty = base_type();
+    if (base_ty) {
         // local variable declaration
-        // parse type
-        node = var(INT);
+        node = var(base_ty->ty);
         expect(";");
         return node;
     } else if (consume_keyword("return")) {
@@ -769,9 +779,12 @@ Node *func(Type *return_type, Token *name) {
     arguments_head.left = NULL;
     Node *arguments_cur = &arguments_head;
     while (!consume(")")) {
-        expect_keyword("int");
+        Type *base_ty = base_type();
+        if (base_ty == NULL) {
+            error_at(token->str, "Base type expected, but got %.*s", token->len, token->str);
+        }
         // treat each function argument as a local variable
-        Node *local_var = var(INT);
+        Node *local_var = var(base_ty->ty);
         arguments_cur->left = local_var;
         arguments_cur = local_var;
 
@@ -817,7 +830,7 @@ void global(Type *ptr_ty, Token *name) {
     var->next = globals;
     var->name = name->str;
     var->len = name->len;
-    var->offset = max(size_of(ty), 8);
+    var->offset = size_of(ty);
     var->type = ty;
     globals = var;
 }

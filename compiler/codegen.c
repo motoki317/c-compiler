@@ -11,6 +11,9 @@ char arguments[6][4] = {
 char arguments_32[6][4] = {
     "edi", "esi", "edx", "ecx", "r8d", "r9d",
 };
+char arguments_8[6][4] = {
+    "dil", "sil", "dl", "cl", "r8b", "r9b",
+};
 
 // Reports error at the given location
 void error(char *fmt, ...) {
@@ -43,6 +46,24 @@ void gen_lvalue(Node *node) {
     }
 
     error("expected lvalue, but got node kind %s", node->kind);
+}
+
+// load_from_rax_to_rax prints out the assembly "mov rax, [rax]",
+// considering the given value size in bytes of the address.
+void load_from_rax_to_rax(size_t size) {
+    switch (size) {
+    case 1:
+        printf("        movsx eax, BYTE PTR [rax]\n");
+        break;
+    case 4:
+        // sign extension from double word [rax] to quad word rax
+        // since the arithmetic operations are based on 64-bit
+        printf("        movsxd rax, DWORD PTR [rax]\n");
+        break;
+    default:
+        printf("        mov rax, [rax]\n");
+        break;
+    }
 }
 
 // multiply_ptr_value multiplies "rdi" register by the type that pointers point to, if the given node represents a pointer.
@@ -80,7 +101,8 @@ void gen_tree(Node *node) {
         }
 
         printf("        pop rax\n");
-        printf("        mov rax, [rax]\n");
+        // Load value in the address considering the value size
+        load_from_rax_to_rax(size_of(node->type));
         printf("        push rax\n");
         return;
     case ND_ASSIGN:
@@ -89,7 +111,18 @@ void gen_tree(Node *node) {
 
         printf("        pop rdi\n");
         printf("        pop rax\n");
-        printf("        mov [rax], rdi\n");
+        // Assign value to the address considering the value size
+        switch (size_of(type_of(node->left))) {
+        case 1:
+            printf("        mov [rax], dil\n");
+            break;
+        case 4:
+            printf("        mov [rax], edi\n");
+            break;
+        default:
+            printf("        mov [rax], rdi\n");
+            break;
+        }
         printf("        push rdi\n");
         return;
     case ND_RETURN:
@@ -109,7 +142,8 @@ void gen_tree(Node *node) {
         gen_tree(node->left);
 
         printf("        pop rax\n");
-        printf("        mov rax, [rax]\n");
+        // Load value in the address considering the value size
+        load_from_rax_to_rax(size_of(type_of(node->left)));
         printf("        push rax\n");
         return;
     case ND_IF:
@@ -217,8 +251,8 @@ void gen_tree(Node *node) {
             cur = cur->right;
             num_args++;
         }
-        // Pop evaluated result into registers in order of: RDI, RSI, RDX, RCX, R8, R9
-        while(num_args > 0) {
+        // Pop evaluated result into registers, max of 6 results
+        while (num_args > 0) {
             num_args--;
             if (num_args < 6) {
                 printf("        pop %s\n", arguments[num_args]);
@@ -230,7 +264,7 @@ void gen_tree(Node *node) {
         // 1. push the original rsp two times (which pushes rsp by 16 bytes)
         printf("        push rsp\n");
         printf("        push [rsp]\n");
-        // 2. 16-byte align rsp, possible subtracting 8 bytes.
+        // 2. 16-byte align rsp, possibly subtracting 8 bytes.
         printf("        and rsp, -0x10\n");
         // 3. Call function
         printf("        call %.*s\n", node->len, node->str);
@@ -248,7 +282,9 @@ void gen_tree(Node *node) {
         printf("        mov rbp, rsp\n");
         // allocate local variables
         if (node->offset > 0) {
-            printf("        sub rsp, %d\n", node->offset);
+            // 8-byte align
+            int offset = ((node->offset - 1) / 8 + 1) * 8;
+            printf("        sub rsp, %d\n", offset);
         }
 
         // Copy function arguments from registers to stack
@@ -262,10 +298,15 @@ void gen_tree(Node *node) {
                 printf("        pop rax\n");
                 // support up to 6 arguments to load from registers
                 if (i < 6) {
-                    // check if the argument is 32-bit or 64-bit wide
-                    if (size_of(next_arg->type) == 4) {
+                    // check the argument size in bytes
+                    switch (size_of(next_arg->type)) {
+                    case 1:
+                        printf("        mov [rax], %s\n", arguments_8[i]);
+                        break;
+                    case 4:
                         printf("        mov [rax], %s\n", arguments_32[i]);
-                    } else {
+                        break;
+                    default:
                         printf("        mov [rax], %s\n", arguments[i]);
                     }
                 }

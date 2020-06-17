@@ -62,7 +62,7 @@ assert 7 "int main() { int i; i = 2; if (i == 2) { i = i + 1; i = i * 2 + 1; } r
 assert 13 "int fib(int x) { if (x <= 1) return x; return fib(x - 1) + fib(x - 2); } int main() { return fib(7); }"
 assert 10 "int tarai(int x, int y, int z) { if (x <= y) return y; return tarai(tarai(x - 1, y, z), tarai(y - 1, z, x), tarai(z - 1, x, y)); } int main() { return tarai(10, 6, 0); }"
 
-assert 3 "int main() { int x; x = 3; int y; y = &x; return *y; }"
+assert 3 "int main() { int x; x = 3; int *y; y = &x; return *y; }"
 
 assert 3 "int main() { int x; int *y; y = &x; *y = 3; return x; }"
 
