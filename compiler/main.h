@@ -1,5 +1,26 @@
 #include <stddef.h>
 
+// container.c
+
+typedef struct Vector {
+    // pointer to the first data
+    // assume void* = 8 bytes
+    void** data;
+    // current data field size
+    int size;
+    // actual elements count
+    int count;
+} Vector;
+
+Vector *new_vector();
+int vector_count(Vector*);
+void vector_add(Vector*, void*);
+void vector_set(Vector*, int, void*);
+void *vector_get(Vector*, int);
+void *vector_get_last(Vector*);
+void vector_delete(Vector*, int);
+void vector_free(Vector*);
+
 // parse.c
 
 struct Token;
@@ -29,9 +50,8 @@ struct Type {
 
 typedef struct LocalVar LocalVar;
 
-// Local variables as linked list
+// Local variables
 struct LocalVar {
-    LocalVar *next;
     // variable name
     char *name;
     // variable name length
@@ -92,9 +112,8 @@ struct Node {
     // Variable name here if the kind is ND_LOCAL_VAR or ND_GLOBAL_VAR
     char *str;
     int len;
-    // List of function arguments if the kind is ND_FUNC
-    // as a linked list - the first one here, the next one in left
-    Node *arguments;
+    // List of function arguments if the kind is ND_FUNC or ND_FUNC_CALL, elements: Node*
+    Vector *arguments;
 };
 
 // size_of returns the size of the given type.
@@ -105,8 +124,9 @@ Type *type_of(Node *node);
 extern Node *code[100];
 
 typedef LocalVar GlobalVar;
-// List of global variables as a linked list
-extern GlobalVar *globals;
+// Global variables
+// elements: GlobalVar*
+extern Vector *globals;
 
 void program();
 

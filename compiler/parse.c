@@ -55,10 +55,12 @@ struct Token {
 };
 
 // Current function's local variables
-LocalVar *locals;
+// elements: LocalVar*
+Vector *locals;
 
-// Global variables as a linked list
-GlobalVar *globals;
+// Global variables
+// elements: GlobalVar*
+Vector *globals;
 
 // Whole user input
 char *user_input;
@@ -312,7 +314,8 @@ Node *new_node_num(int val) {
 
 // find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
 LocalVar *find_local_var(Token *tok) {
-    for (LocalVar *var = locals; var; var = var->next) {
+    for (int i = 0; i < vector_count(locals); i++) {
+        LocalVar *var = (LocalVar*) vector_get(locals, i);
         if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
             return var;
         }
@@ -322,7 +325,8 @@ LocalVar *find_local_var(Token *tok) {
 
 // find_global_var returns global var if the global var has already been declared; returns NULL otherwise.
 GlobalVar *find_global_var(Token *tok) {
-    for (GlobalVar *var = globals; var; var = var->next) {
+    for (int i = 0; i < vector_count(globals); i++) {
+        GlobalVar *var = (GlobalVar*) vector_get(globals, i);
         if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
             return var;
         }
@@ -330,30 +334,23 @@ GlobalVar *find_global_var(Token *tok) {
     return NULL;
 }
 
-size_t max(size_t a, size_t b) {
-    if (a > b) {
-        return a;
-    } else {
-        return b;
-    }
-}
-
-// new_local_var returns a local variable as node. If this is a new variable, appends it to the list of local variables.
+// new_local_var returns a local variable as node.
+// Always generates a new local variable and appends it to the current local variables.
 Node *new_local_var(Token *tok, Type *ty) {
+    LocalVar *var = calloc(1, sizeof(LocalVar));
+    var->name = tok->str;
+    var->len = tok->len;
+    if (vector_count(locals) == 0) {
+        var->offset = size_of(ty);
+    } else {
+        LocalVar *last_var = (LocalVar*) vector_get_last(locals);
+        var->offset = last_var->offset + size_of(ty);
+    }
+    var->type = ty;
+    vector_add(locals, var);
+
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_LOCAL_VAR;
-    // determine offset
-    LocalVar *var = find_local_var(tok);
-    if (!var) {
-        // new variable
-        var = calloc(1, sizeof(LocalVar));
-        var->next = locals;
-        var->name = tok->str;
-        var->len = tok->len;
-        var->offset = locals->offset + size_of(ty);
-        var->type = ty;
-        locals = var;
-    }
     node->offset = var->offset;
     node->type = ty;
     return node;
@@ -456,18 +453,15 @@ Node *primary() {
             node->str = tok->str;
             node->len = tok->len;
 
-            Node *cur = node;
+            Vector *arguments = new_vector();
             while (!consume(")")) {
-                cur->left = expr();
-                Node *next = calloc(1, sizeof(Node));
-                next->kind = ND_FUNC_CALL;
-                cur->right = next;
-                cur = next;
+                vector_add(arguments, expr());
                 if (!consume(",")) {
                     expect(")");
                     break;
                 }
             }
+            node->arguments = arguments;
             return node;
         }
 
@@ -771,13 +765,10 @@ Node *func(Type *return_type, Token *name) {
     node->len = name->len;
 
     // current function's local variables, for new_local_var function to append to this
-    locals = calloc(1, sizeof(LocalVar));
+    locals = new_vector();
 
     // read function arguments
-    // arguments as a linked list
-    Node arguments_head;
-    arguments_head.left = NULL;
-    Node *arguments_cur = &arguments_head;
+    Vector *arguments = new_vector();
     while (!consume(")")) {
         Type *base_ty = base_type();
         if (base_ty == NULL) {
@@ -785,15 +776,14 @@ Node *func(Type *return_type, Token *name) {
         }
         // treat each function argument as a local variable
         Node *local_var = var(base_ty->ty);
-        arguments_cur->left = local_var;
-        arguments_cur = local_var;
+        vector_add(arguments, local_var);
 
         if (!consume(",")) {
             expect(")");
             break;
         }
     }
-    node->arguments = arguments_head.left;
+    node->arguments = arguments;
 
     // parse function body
     expect("{");
@@ -810,12 +800,13 @@ Node *func(Type *return_type, Token *name) {
     }
 
     node->left = block;
-    // final list of local variables after parsing function body
-    Node *local_vars = calloc(1, sizeof(Node));
-    local_vars->kind = ND_LOCAL_VAR;
-    local_vars->offset = locals->offset;
-    local_vars->type = locals->type;
-    node->offset = locals->offset;
+    // final local vars offset
+    if (vector_count(locals) > 0) {
+        LocalVar *last_local_var = (LocalVar*) vector_get_last(locals);
+        node->offset = last_local_var->offset;
+    }
+
+    return node;
 }
 
 // global parses the next global variable and defines it.
@@ -827,17 +818,16 @@ void global(Type *ptr_ty, Token *name) {
     }
 
     GlobalVar *var = calloc(1, sizeof(LocalVar));
-    var->next = globals;
     var->name = name->str;
     var->len = name->len;
     var->offset = size_of(ty);
     var->type = ty;
-    globals = var;
+    vector_add(globals, var);
 }
 
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
-    globals = NULL;
+    globals = new_vector();
 
     int i = 0;
     memset(code, 0, sizeof(code));

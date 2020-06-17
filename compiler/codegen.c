@@ -244,18 +244,13 @@ void gen_tree(Node *node) {
         return;
     case ND_FUNC_CALL: ;
         // Evaluate arguments
-        Node *cur = node;
-        int num_args = 0;
-        while(cur->left) {
-            gen_tree(cur->left);
-            cur = cur->right;
-            num_args++;
+        for (int i = 0; i < vector_count(node->arguments); i++) {
+            gen_tree((Node*) vector_get(node->arguments, i));
         }
         // Pop evaluated result into registers, max of 6 results
-        while (num_args > 0) {
-            num_args--;
-            if (num_args < 6) {
-                printf("        pop %s\n", arguments[num_args]);
+        for (int i = vector_count(node->arguments) - 1; i >= 0; i--) {
+            if (i < 6) {
+                printf("        pop %s\n", arguments[i]);
             } else {
                 printf("        pop rax\n");
             }
@@ -288,29 +283,24 @@ void gen_tree(Node *node) {
         }
 
         // Copy function arguments from registers to stack
-        Node *next_arg = node->arguments;
-        if (next_arg) {
-            // argument index
-            int i = 0;
-            for (; next_arg; next_arg = next_arg->left) {
-                // evaluate address of the local variable in stack
-                gen_lvalue(next_arg);
-                printf("        pop rax\n");
-                // support up to 6 arguments to load from registers
-                if (i < 6) {
-                    // check the argument size in bytes
-                    switch (size_of(next_arg->type)) {
-                    case 1:
-                        printf("        mov [rax], %s\n", arguments_8[i]);
-                        break;
-                    case 4:
-                        printf("        mov [rax], %s\n", arguments_32[i]);
-                        break;
-                    default:
-                        printf("        mov [rax], %s\n", arguments[i]);
-                    }
+        for (int i = 0; i < vector_count(node->arguments); i++) {
+            // evaluate address of the local variable in stack
+            Node *arg = (Node*) vector_get(node->arguments, i);
+            gen_lvalue(arg);
+            printf("        pop rax\n");
+            // support up to 6 arguments to load from registers
+            if (i < 6) {
+                // check the argument size in bytes
+                switch (size_of(arg->type)) {
+                case 1:
+                    printf("        mov [rax], %s\n", arguments_8[i]);
+                    break;
+                case 4:
+                    printf("        mov [rax], %s\n", arguments_32[i]);
+                    break;
+                default:
+                    printf("        mov [rax], %s\n", arguments[i]);
                 }
-                i++;
             }
         }
 
@@ -406,7 +396,8 @@ void gen() {
     printf(".global main\n");
 
     // Print out global variables
-    for (GlobalVar *var = globals; var; var = var->next) {
+    for (int i = 0; i < vector_count(globals); i++) {
+        GlobalVar *var = (GlobalVar*) vector_get(globals, i);
         // to binary
         printf(".bss\n");
         printf("%.*s:\n", var->len, var->name);
