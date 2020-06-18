@@ -24,6 +24,7 @@ assert 57 "int main() { 55+5-3; }"
 
 assert 57 "int main() { 55 + 5 - 3; }"
 assert 3 "int main() {  5 + 5  - 7; }"
+assert 3 "int main() { 8 - 3 - 2; }"
 
 assert 47 "int main() { 5 + 6 * 7; }"
 assert 15 "int main() { 5 * (9 - 6); }"
