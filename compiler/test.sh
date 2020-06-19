@@ -92,4 +92,14 @@ assert 3 "int main() { char x[3]; x[0] = -1; x[1] = 2; int y; y = 4; return x[0]
 
 assert 97 "int main() { char *x; x = \"abc\"; return x[0]; }"
 
+assert 8 "int main() {
+    int x;
+    x = 5;
+    // this is a comment
+    /*
+    also a comment
+    */
+    return x + 3;
+}"
+
 echo "OK"

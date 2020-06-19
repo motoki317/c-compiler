@@ -198,6 +198,26 @@ Token *tokenize_next(char **p, Token *cur) {
         return NULL;
     }
 
+    // Skip line comment
+    if (strncmp(*p, "//", 2) == 0) {
+        *p += 2;
+        while (**p != '\n') {
+            *p += 1;
+        }
+        *p += 1;
+        return NULL;
+    }
+
+    // Skip block comment
+    if (strncmp(*p, "/*", 2) == 0) {
+        char *q = strstr(*p + 2, "*/");
+        if (!q) {
+            error_at(*p, "couldn't find comment closer");
+        }
+        *p = q + 2;
+        return NULL;
+    }
+
     // Check for symbols
     for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
         if (memcmp(symbols[i], *p, strlen(symbols[i])) == 0) {
