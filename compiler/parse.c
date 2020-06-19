@@ -64,9 +64,6 @@ Vector *locals;
 // elements: GlobalVar*
 Vector *globals;
 
-// Whole user input
-char *user_input;
-
 // Current token
 Token *token;
 
@@ -75,21 +72,6 @@ Vector *code;
 
 // String literals
 Vector *strings;
-
-// Reports error at the given location
-void error_at(char *loc, char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-
-    int pos = loc - user_input;
-    fprintf(stderr, "%s\n", user_input);
-    // space * pos times
-    fprintf(stderr, "%*s", pos, "");
-    fprintf(stderr, "^ ");
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-    exit(1);
-}
 
 // consume returns true when the current token is the given expected operator, and proceeds to the next token.
 // Returns false otherwise.

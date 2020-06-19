@@ -1,8 +1,6 @@
 #include "main.h"
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
 
 // register names
 char arguments[6][4] = {
@@ -14,15 +12,6 @@ char arguments_32[6][4] = {
 char arguments_8[6][4] = {
     "dil", "sil", "dl", "cl", "r8b", "r9b",
 };
-
-// Reports error
-void error(char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-    exit(1);
-}
 
 void gen_tree();
 

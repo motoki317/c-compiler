@@ -2,6 +2,13 @@
 
 // container.c
 
+void error(char *fmt, ...);
+
+// Reports error at the given location
+void error_at(char *loc, char *fmt, ...);
+
+char *read_file(char *path);
+
 typedef struct Vector {
     // pointer to the first data
     // assume void* = 8 bytes
@@ -21,13 +28,18 @@ void *vector_get_last(Vector*);
 void vector_delete(Vector*, int);
 void vector_free(Vector*);
 
+// main.c
+
+// Given file name
+extern char *file_name;
+// Whole user input
+extern char *user_input;
+
 // parse.c
 
 struct Token;
 typedef struct Token Token;
 
-// Whole user input
-extern char *user_input;
 // Current token
 extern Token *token;
 
