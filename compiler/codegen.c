@@ -58,7 +58,7 @@ void load_from_rax_to_rax(size_t size) {
 // multiply_ptr_value multiplies "rdi" register by the type that pointers point to, if the given node represents a pointer.
 // e.g. if the node represents a local variable of type int *, then multiply "rdi" by 4.
 void multiply_ptr_value(Node *node) {
-    if (node->kind != ND_LOCAL_VAR ||
+    if ((node->kind != ND_LOCAL_VAR && node->kind != ND_GLOBAL_VAR) ||
         node->type == NULL) {
         return;
     }
@@ -68,6 +68,7 @@ void multiply_ptr_value(Node *node) {
     if ((type->ty == PTR || type->ty == ARRAY) && type->ptr_to) {
         // which type this pointer points to / this array is composed of
         size_t ptr_to_size = size_of(type->ptr_to);
+        if (ptr_to_size == 1) return;
         printf("        imul rdi, %ld\n", ptr_to_size);
     }
 }
@@ -136,7 +137,12 @@ void gen_tree(Node *node) {
 
         printf("        pop rax\n");
         // Load value in the address considering the value size
-        load_from_rax_to_rax(size_of(type_of(node->left)));
+        Type *ty = type_of(node->left);
+        // If the dereference is to an array, implicitly convert it to a pointer
+        if (ty->ty == PTR || ty->ty == ARRAY) {
+            ty = ty->ptr_to;
+        }
+        load_from_rax_to_rax(size_of(ty));
         printf("        push rax\n");
         return;
     case ND_IF:
