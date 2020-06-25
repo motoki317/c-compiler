@@ -402,7 +402,7 @@ void gen() {
     for (int i = 0; i < vector_count(strings); i++) {
         Node *literal = (Node*) vector_get(strings, i);
         printf(".text\n");
-        printf(".LC%d:\n", i);
+        printf(".LC%d:\n", literal->label);
         printf("        .string \"%.*s\"\n", literal->len, literal->str);
     }
 

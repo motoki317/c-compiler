@@ -491,6 +491,7 @@ Node *primary() {
         node->kind = ND_STRING;
         node->str = tok->str;
         node->len = tok->len;
+        node->label = vector_count(strings);
         vector_add(strings, node);
         return node;
     }
