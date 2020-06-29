@@ -101,13 +101,14 @@ typedef enum {
     ND_LOCAL_VAR, // Local variable
     ND_GLOBAL_VAR, // Global variable
     ND_STRING, // String literal
-    ND_NUM, // Number, node is expected to be leaf if and only if kind == ND_NUM, as of now
+    ND_NUM, // Number
 } NodeKind;
 
 typedef struct Node Node;
 
 struct Node {
     NodeKind kind;
+    // Global variable initializer node here if the kind is ND_GLOBAL_VAR
     Node *left;
     Node *right;
     Node *third;
@@ -139,7 +140,21 @@ Type *type_of(Node *node);
 // Code vector, elements: Node*
 extern Vector *code;
 
-typedef LocalVar GlobalVar;
+typedef struct GlobalVar GlobalVar;
+
+struct GlobalVar {
+    // variable name
+    char *name;
+    // variable name length
+    int len;
+    // offset from rbp
+    int offset;
+    // type
+    Type *type;
+    // initializer
+    Node *init;
+};
+
 // Global variables, elements: GlobalVar*
 extern Vector *globals;
 

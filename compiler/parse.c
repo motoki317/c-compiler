@@ -302,7 +302,7 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = (var ";" | func)*
+program    = (var ";" | var "=" expr ";" | func)*
 ptr_type   = "int" | "char" | type "*"
 var        = ptr_type ident ("[" num "]")*
 func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
@@ -473,6 +473,151 @@ size_t size_of(Type *ty) {
     }
 }
 
+// Helper function for eval_global_init
+// Checks if the given nodes (ND_NUM, ND_GLOBAL_VAR, ND_ADD or ND_SUB) are equal.
+bool init_node_equals(Node *first, Node *second) {
+    if (first->kind != second->kind) return false;
+
+    switch (first->kind) {
+    case ND_NUM:
+        return first->val == second->val;
+    case ND_GLOBAL_VAR:
+        return first->len == second->len
+            && strncmp(first->str, second->str, first->len) == 0
+            && first->offset == second->offset;
+    case ND_ADD:
+    case ND_SUB:
+        return init_node_equals(first->left, second->left) && init_node_equals(first->right, second->right);
+    }
+
+    error_at(first->str, "expected ND_NUM, ND_GLOBAL_VAR, ND_ADD or ND_SUB but got %d", first->kind);
+}
+
+// Helper function for eval_global_init
+// Returns the number of the node with ND_NUM. If the kind of the node is not ND_NUM, throws an error.
+int eval_number(Node *num) {
+    if (num->kind != ND_NUM) {
+        error_at(num->str, "expected number");
+    }
+    return num->val;
+}
+
+// Helper function for eval_global_init
+// Returns the global variable inside this node.
+Node *retrieve_global_var(Node *node) {
+    switch (node->kind) {
+    case ND_GLOBAL_VAR:
+        return node;
+    case ND_ADD:
+    case ND_SUB:
+        if (node->left->kind == ND_GLOBAL_VAR || node->left->kind == ND_ADD || node->left->kind == ND_SUB) {
+            return retrieve_global_var(node->left);
+        } else if (node->right->kind == ND_GLOBAL_VAR || node->right->kind == ND_ADD || node->right->kind == ND_SUB) {
+            return retrieve_global_var(node->right);
+        }
+    }
+    error_at(node->str, "expected global variable inside this node, but not found");
+}
+
+// Helper function for eval_global_init
+// Returns the size of type which this pointer (or array) points to, if this node includes a pointer or array variable.
+int size_of_ptr(Node *node) {
+    Node *global_var = retrieve_global_var(node);
+
+    Type *type = node->type;
+    if ((type->ty == PTR || type->ty == ARRAY) && type->ptr_to) {
+        return size_of(type->ptr_to);
+    }
+    return 1;
+}
+
+// Evaluates global variable initializer.
+// Returns node of one of: ND_NUM, ND_GLOBAL_VAR (address of other global variable), ND_STRING,
+// ND_ADD/ND_SUB (with left node of ND_GLOBAL_VAR (address) and right node of ND_NUM (already multiplied by ptr size))
+Node *eval_global_init(Node *node) {
+    switch (node->kind) {
+    case ND_ASSIGN: // =
+        error_at(node->str, "assigning at initializer not allowed");
+    case ND_EQUAL: // == // NOTE: equality comparison of only numbers
+        return new_node_num(init_node_equals(eval_global_init(node->left), eval_global_init(node->right)));
+    case ND_NOT_EQUAL: // !=
+        return new_node_num(!init_node_equals(eval_global_init(node->left), eval_global_init(node->right)));
+    case ND_LESS_EQUAL: // <=
+        return new_node_num(eval_number(eval_global_init(node->left)) <= eval_number(eval_global_init(node->right)));
+    case ND_LESS: // <
+        return new_node_num(eval_number(eval_global_init(node->left)) < eval_number(eval_global_init(node->right)));
+    case ND_GREATER_EQUAL: // >=
+        return new_node_num(eval_number(eval_global_init(node->left)) >= eval_number(eval_global_init(node->right)));
+    case ND_GREATER: // >
+        return new_node_num(eval_number(eval_global_init(node->left)) > eval_number(eval_global_init(node->right)));
+    case ND_ADD: // +
+    case ND_SUB: // -
+        ;
+        Node *first = eval_global_init(node->left);
+        Node *second = eval_global_init(node->right);
+        if (first->kind == ND_NUM && second->kind == ND_NUM) {
+            if (node->kind == ND_ADD) {
+                return new_node_num(eval_number(first) + eval_number(second));
+            } else {
+                return new_node_num(eval_number(first) - eval_number(second));
+            }
+        } else if (first->kind == ND_GLOBAL_VAR && second->kind == ND_NUM) {
+            node->left = first;
+            node->right = second;
+            return node;
+        } else if (first->kind == ND_NUM && second->kind == ND_GLOBAL_VAR) {
+            node->left = second;
+            node->right = first;
+            return node;
+        } else if ((first->kind == ND_ADD || first->kind == ND_SUB) && second->kind == ND_NUM) {
+            node->left = retrieve_global_var(first);
+            if (node->kind == ND_ADD) {
+                node->right = new_node_num(eval_number(first->right) + eval_number(second) * size_of_ptr(first));
+            } else {
+                node->right = new_node_num(eval_number(first->right) - eval_number(second) * size_of_ptr(first));
+            }
+            return node;
+        } else if (first->kind == ND_NUM && (second->kind == ND_ADD || second->kind == ND_SUB)) {
+            node->left = retrieve_global_var(second);
+            if (node->kind == ND_ADD) {
+                node->right = new_node_num(eval_number(second->right) + eval_number(first) * size_of_ptr(second));
+            } else {
+                node->right = new_node_num(eval_number(second->right) - eval_number(first) * size_of_ptr(second));
+            }
+            return node;
+        } else {
+            error_at(node->str, "unsupported operand types");
+        }
+    case ND_MUL: // *
+        first = eval_global_init(node->left);
+        second = eval_global_init(node->right);
+        return new_node_num(eval_number(first) * eval_number(second));
+    case ND_DIV: // /
+        first = eval_global_init(node->left);
+        second = eval_global_init(node->right);
+        return new_node_num(eval_number(first) / eval_number(second));
+    case ND_ADDR: // &
+        if (node->left->kind != ND_GLOBAL_VAR) {
+            error_at(node->left->str, "expected global variable");
+        }
+        return node->left;
+    case ND_FUNC: // function
+        // TODO: support taking address of functions
+        error_at(node->str, "taking address of functions is not supported");
+    case ND_GLOBAL_VAR: // Global variable
+        if (node->type->ty == PTR || node->type->ty == ARRAY) {
+            return node;
+        }
+        error_at(node->str, "initializer element is not constant");
+    case ND_STRING: // String literal
+        return node;
+    case ND_NUM: // Number
+        return node;
+    }
+
+    error_at(node->str, "invalid initializer");
+}
+
 Node *expr();
 
 // primary parses the next 'primary' (in EBNF) as AST.
@@ -523,18 +668,23 @@ Node *primary() {
         LocalVar *var = find_local_var(tok);
         if (var) {
             node->kind = ND_LOCAL_VAR;
+            node->offset = var->offset;
+            node->type = var->type;
+            node->str = var->name;
+            node->len = var->len;
         } else {
-            var = find_global_var(tok);
+            GlobalVar *var = find_global_var(tok);
+            // If the variable has not been declared, raise an error
+            if (!var) {
+                error_at(tok->str, "Variable %.*s has not been declared", tok->len, tok->str);
+            }
+
             node->kind = ND_GLOBAL_VAR;
+            node->offset = var->offset;
+            node->type = var->type;
+            node->str = var->name;
+            node->len = var->len;
         }
-        // If the variable has not been declared, raise an error
-        if (!var) {
-            error_at(tok->str, "Variable %.*s has not been declared", tok->len, tok->str);
-        }
-        node->offset = var->offset;
-        node->type = var->type;
-        node->str = var->name;
-        node->len = var->len;
 
         if (consume("[")) {
             // parse "a[b]" syntax (array indexing) as "*(a + b)"
@@ -870,11 +1020,18 @@ void global(Type *ptr_ty, Token *name) {
         error_at(name->str, "Global variable %.*s has already been declared", name->len, name->str);
     }
 
-    GlobalVar *var = calloc(1, sizeof(LocalVar));
+    GlobalVar *var = calloc(1, sizeof(GlobalVar));
     var->name = name->str;
     var->len = name->len;
     var->offset = size_of(ty);
     var->type = ty;
+
+    // initializer
+    if (consume("=")) {
+        Node *init = expr();
+        var->init = eval_global_init(init);
+    }
+
     vector_add(globals, var);
 }
 

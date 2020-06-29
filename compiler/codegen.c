@@ -385,6 +385,43 @@ void gen_tree(Node *node) {
     printf("        push rax\n");
 }
 
+// gen_global generates the assembly for the given global variable.
+void gen_global(GlobalVar *var) {
+    // to binary
+    printf(".data\n");
+    printf("%.*s:\n", var->len, var->name);
+    // If there is an initialization for this global variable
+    if (var->init) {
+        Node *init = var->init;
+        switch (init->kind) {
+        case ND_NUM:
+            // supposing the type is int, for now
+            printf("        .long %d\n", init->val);
+            break;
+        case ND_GLOBAL_VAR:
+            // take address of the global var
+            printf("        .quad %.*s\n", init->len, init->str);
+            break;
+        case ND_STRING:
+            // NOTE: does not support non-ascii characters for now
+            printf("        .string \"%.*s\"\n", init->len, init->str);
+            break;
+        case ND_ADD:
+            // expect node->left to be ND_GLOBAL_VAR
+            printf("        .quad %.*s+%d\n", init->left->len, init->left->str, init->right->val);
+            break;
+        case ND_SUB:
+            // expect node->left to be ND_GLOBAL_VAR
+            printf("        .quad %.*s+%d\n", init->left->len, init->left->str, init->right->val);
+            break;
+        default:
+            error_at(init->str, "unknown initialization");
+        }
+    } else {
+        printf("        .zero %d\n", var->offset);
+    }
+}
+
 // gen reads the parsed code in AST, and prints out the assembly to complete the compilation.
 void gen() {
     // Consume tokens to build multiple ASTs (Abstract Syntax Tree)
@@ -397,20 +434,18 @@ void gen() {
     // Print out global variables
     for (int i = 0; i < vector_count(globals); i++) {
         GlobalVar *var = (GlobalVar*) vector_get(globals, i);
-        // to binary
-        printf(".bss\n");
-        printf("%.*s:\n", var->len, var->name);
-        printf("        .zero %d\n", var->offset);
-        printf("        .text\n");
+        gen_global(var);
     }
 
     // Print out string literals
     for (int i = 0; i < vector_count(strings); i++) {
         Node *literal = (Node*) vector_get(strings, i);
-        printf(".text\n");
+        printf(".data\n");
         printf(".LC%d:\n", literal->label);
         printf("        .string \"%.*s\"\n", literal->len, literal->str);
     }
+
+    printf("        .text\n");
 
     // Calculate the result for each functions
     for (int i = 0; i < vector_count(code); i++) {

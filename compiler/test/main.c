@@ -186,6 +186,36 @@ int test_16() {
     return x[0];
 }
 
+// global variable initializers test
+
+int gv_17 = 5;
+char gv_18[7] = "foobar";
+int *gv_19 = &gv_17;
+char *gv_20 = gv_18 + 3;
+
+// assert test_17 returns 5
+int test_17() {
+    return gv_17;
+}
+
+// assert test_18 returns 102
+int test_18() {
+    return gv_18[0];
+}
+
+// assert test_19 returns 5
+int test_19() {
+    return *gv_19;
+}
+
+// assert test_20 returns 97
+int test_20() {
+ return gv_20[1];
+}
+
+// assert test_20
+
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -250,6 +280,11 @@ int main() {
 
     assertEquals(test_15(), 3, "return value of test_15 does not equal to 3");
     assertEquals(test_16(), 97, "return value of test_16 does not equal to 97");
+
+    assertEquals(test_17(), 5, "return value of test_17 does not equal to 5");
+    assertEquals(test_18(), 102, "return value of test_17 does not equal to 5");
+    assertEquals(test_19(), 5, "return value of test_17 does not equal to 5");
+    assertEquals(test_20(), 97, "return value of test_17 does not equal to 5");
 
     /*
     This is a block comment
