@@ -385,36 +385,80 @@ void gen_tree(Node *node) {
     printf("        push rax\n");
 }
 
+int max(int a, int b) {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+void gen_global_node(Node *node, Type *ty) {
+    switch (node->kind) {
+    case ND_NUM:
+        // supposing the type is int, for now
+        switch (size_of(ty)) {
+        case 1:
+            printf("        .byte %d\n", node->val);
+            break;
+        case 2:
+            printf("        .short %d\n", node->val);
+            break;
+        case 4:
+            printf("        .long %d\n", node->val);
+            break;
+        case 8:
+            printf("        .quad %d\n", node->val);
+            break;
+        default:
+            error_at(node->str, "unsupported size: %d", size_of(ty));
+        }
+        break;
+    case ND_GLOBAL_VAR:
+        // take address of the global var
+        printf("        .quad %.*s\n", node->len, node->str);
+        break;
+    case ND_STRING:
+        // NOTE: does not support non-ascii characters for now
+        printf("        .string \"%.*s\"\n", node->len, node->str);
+        // zero fill
+        if (size_of(type_of(node)) < size_of(ty)) {
+            printf("        .zero %ld\n", size_of(ty) - (size_of(type_of(node))));
+        }
+        break;
+    case ND_ADD:
+        // expect node->left to be ND_GLOBAL_VAR
+        printf("        .quad %.*s+%d\n", node->left->len, node->left->str, node->right->val);
+        break;
+    case ND_SUB:
+        // expect node->left to be ND_GLOBAL_VAR
+        printf("        .quad %.*s+%d\n", node->left->len, node->left->str, node->right->val);
+        break;
+    case ND_ARRAY: ;
+        if (!ty || ty->ty != ARRAY) {
+            error_at(node->str, "expected array type");
+        }
+        for (int i = 0; i < vector_count(node->arguments); i++) {
+            Node *elt = (Node*) vector_get(node->arguments, i);
+            gen_global_node(elt, ty->ptr_to);
+        }
+        // zero fill
+        if (vector_count(node->arguments) < ty->array_size) {
+            int zero_fill_size = (ty->array_size - vector_count(node->arguments)) * size_of(ty->ptr_to);
+            printf("        .zero %d\n", zero_fill_size);
+        }
+        break;
+    default:
+        error_at(node->str, "unknown initialization");
+    }
+}
+
 // gen_global generates the assembly for the given global variable.
 void gen_global(GlobalVar *var) {
     printf("%.*s:\n", var->len, var->name);
     // If there is an initialization for this global variable
     if (var->init) {
-        Node *init = var->init;
-        switch (init->kind) {
-        case ND_NUM:
-            // supposing the type is int, for now
-            printf("        .long %d\n", init->val);
-            break;
-        case ND_GLOBAL_VAR:
-            // take address of the global var
-            printf("        .quad %.*s\n", init->len, init->str);
-            break;
-        case ND_STRING:
-            // NOTE: does not support non-ascii characters for now
-            printf("        .string \"%.*s\"\n", init->len, init->str);
-            break;
-        case ND_ADD:
-            // expect node->left to be ND_GLOBAL_VAR
-            printf("        .quad %.*s+%d\n", init->left->len, init->left->str, init->right->val);
-            break;
-        case ND_SUB:
-            // expect node->left to be ND_GLOBAL_VAR
-            printf("        .quad %.*s+%d\n", init->left->len, init->left->str, init->right->val);
-            break;
-        default:
-            error_at(init->str, "unknown initialization");
-        }
+        gen_global_node(var->init, var->type);
     } else {
         printf("        .zero %d\n", var->offset);
     }

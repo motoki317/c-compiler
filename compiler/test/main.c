@@ -189,9 +189,12 @@ int test_16() {
 // global variable initializers test
 
 int gv_17 = 5;
-char gv_18[7] = "foobar";
+char gv_18[] = "foobar";
 int *gv_19 = &gv_17;
 char *gv_20 = gv_18 + 3;
+int gv_21[] = {1, 2, 3};
+int gv_22[5] = {1, 2, 3};
+char gv_23[10] = "test";
 
 // assert test_17 returns 5
 int test_17() {
@@ -210,10 +213,24 @@ int test_19() {
 
 // assert test_20 returns 97
 int test_20() {
- return gv_20[1];
+    return gv_20[1];
 }
 
-// assert test_20
+// assert test_21 returns 2
+int test_21() {
+    return gv_21[1];
+}
+
+// assert test_22 returns 3
+int test_22() {
+    return gv_22[2] + gv_22[3] + gv_22[4];
+}
+
+// assert test_23 returns 116
+int test_23() {
+    // t (116) + zero fill
+    return gv_23[3] + gv_23[9];
+}
 
 
 int main() {
@@ -282,9 +299,12 @@ int main() {
     assertEquals(test_16(), 97, "return value of test_16 does not equal to 97");
 
     assertEquals(test_17(), 5, "return value of test_17 does not equal to 5");
-    assertEquals(test_18(), 102, "return value of test_17 does not equal to 5");
-    assertEquals(test_19(), 5, "return value of test_17 does not equal to 5");
-    assertEquals(test_20(), 97, "return value of test_17 does not equal to 5");
+    assertEquals(test_18(), 102, "return value of test_18 does not equal to 102");
+    assertEquals(test_19(), 5, "return value of test_19 does not equal to 5");
+    assertEquals(test_20(), 97, "return value of test_20 does not equal to 97");
+
+    assertEquals(test_21(), 2, "return value of test_21 does not equal to 2");
+    assertEquals(test_22(), 3, "return value of test_22 does not equal to 3");
 
     /*
     This is a block comment

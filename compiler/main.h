@@ -102,6 +102,7 @@ typedef enum {
     ND_GLOBAL_VAR, // Global variable
     ND_STRING, // String literal
     ND_NUM, // Number
+    ND_ARRAY, // Array initializer for variables: e.g. "{1, 2, foo()}"
 } NodeKind;
 
 typedef struct Node Node;
@@ -129,6 +130,7 @@ struct Node {
     char *str;
     int len;
     // List of function arguments if the kind is ND_FUNC or ND_FUNC_CALL, elements: Node*
+    // List of array elements if the kind is ND_ARRAY, elements: Node*
     Vector *arguments;
 };
 

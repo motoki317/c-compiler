@@ -143,6 +143,18 @@ Token *consume_string() {
     return ret;
 }
 
+// consume_number returns pointer to the consumed number and proceed to the next token.
+// Returns NULL otherwise.
+int *consume_number() {
+    if (token->kind != TK_NUM) {
+        return NULL;
+    }
+    int *ret = calloc(1, sizeof(int));
+    *ret = token->val;
+    token = token->next;
+    return ret;
+}
+
 // expect_number returns number and proceed to the next token when the current token is represents a number.
 // Reports error otherwise.
 int expect_number() {
@@ -313,6 +325,7 @@ stmt       = expr ";"
             | "while" "(" expr ")" stmt
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "return" expr ";"
+init       = "{" (expr ("," expr)*)? "}" | expr
 expr       = assign
 assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
@@ -459,6 +472,22 @@ Type *type_of(Node *node) {
     error_at(node->str, "unknown type at %.*s", node->len, node->str);
 }
 
+// type_equals deeply checks the type equality.
+bool type_equals(Type *first, Type *second) {
+    if (first->ty != second->ty) {
+        return false;
+    }
+    switch (first->ty) {
+    case CHAR:
+    case INT:
+        return true;
+    case PTR:
+    case ARRAY:
+        return type_equals(first->ptr_to, second->ptr_to);
+    }
+    error("type equals not implemented");
+}
+
 // size_of returns the size of the given type in bytes.
 size_t size_of(Type *ty) {
     switch (ty->ty) {
@@ -469,6 +498,9 @@ size_t size_of(Type *ty) {
     case PTR:
         return 8;
     case ARRAY:
+        if (ty->array_size == -1) {
+            error("array size is undefined");
+        }
         return ty->array_size * size_of(ty->ptr_to);
     }
 }
@@ -532,7 +564,7 @@ int size_of_ptr(Node *node) {
 }
 
 // Evaluates global variable initializer.
-// Returns node of one of: ND_NUM, ND_GLOBAL_VAR (address of other global variable), ND_STRING,
+// Returns node of one of: ND_NUM, ND_GLOBAL_VAR (address of other global variable), ND_STRING, ND_ARRAY,
 // ND_ADD/ND_SUB (with left node of ND_GLOBAL_VAR (address) and right node of ND_NUM (already multiplied by ptr size))
 Node *eval_global_init(Node *node) {
     switch (node->kind) {
@@ -612,6 +644,19 @@ Node *eval_global_init(Node *node) {
     case ND_STRING: // String literal
         return node;
     case ND_NUM: // Number
+        return node;
+    case ND_ARRAY:
+        // validate
+        if (!node->type || node->type->ty != ARRAY) {
+            error_at(node->str, "expected array type");
+        }
+        for (int i = 0; i < vector_count(node->arguments); i++) {
+            Node *elt = (Node*) vector_get(node->arguments, i);
+            if (!type_equals(node->type->ptr_to, type_of(elt))) {
+                error_at(elt->str, "unmatched type in array initializer element");
+            }
+            vector_set(node->arguments, i, eval_global_init(elt));
+        }
         return node;
     }
 
@@ -832,9 +877,13 @@ Type *ptr_type(TypeKind base) {
 // array_type parses the (array part of the) type.
 Type *array_type(Type *base) {
      if (consume("[")) {
-        int size = expect_number();
-        if (size < 0) {
-            error_at(token->str, "Array size must not be negative");
+        int *num = consume_number();
+        int size = -1;
+        if (num) {
+            size = *num;
+            if (size < 0) {
+                error_at(token->str, "Array size must not be negative");
+            }
         }
         expect("]");
         Type *ty = calloc(1, sizeof(Type));
@@ -1012,6 +1061,32 @@ Node *func(Type *return_type, Token *name) {
     return node;
 }
 
+// init parses the next 'init' (in EBNF) as AST.
+// For variable initialization.
+Node *init() {
+    if (consume("{")) {
+        Vector *elements = new_vector();
+        while (!consume("}")) {
+            vector_add(elements, expr());
+            if (!consume(",")) {
+                expect("}");
+                break;
+            }
+        }
+
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_ARRAY;
+        node->type = new_type(ARRAY);
+        if (node->type->array_size == -1) {
+            node->type->array_size = vector_count(elements);
+        }
+        node->arguments = elements;
+        return node;
+    }
+
+    return expr();
+}
+
 // global parses the next global variable and defines it.
 void global(Type *ptr_ty, Token *name) {
     Type *ty = array_type(ptr_ty);
@@ -1023,14 +1098,37 @@ void global(Type *ptr_ty, Token *name) {
     GlobalVar *var = calloc(1, sizeof(GlobalVar));
     var->name = name->str;
     var->len = name->len;
-    var->offset = size_of(ty);
     var->type = ty;
 
     // initializer
     if (consume("=")) {
-        Node *init = expr();
-        var->init = eval_global_init(init);
+        Node *init_node_before = init();
+        if (ty->ty == ARRAY && init_node_before->type && init_node_before->type->ty == ARRAY) {
+            // for eval_global_init to know which type this array is composed of
+            init_node_before->type->ptr_to = ty->ptr_to;
+        }
+        Node *init_node = eval_global_init(init_node_before);
+        var->init = init_node;
+
+        // support excluding array length: e.g. "int arr[] = {1, 2, 3};"
+        if (ty->ty == ARRAY && ty->array_size == -1) {
+            // ND_STRING (string literal) represents char array
+            if ((init_node->type && init_node->type->ty != ARRAY) && init_node->kind == ND_STRING) {
+                error_at(name->str, "expected array initializer");
+            }
+            if (init_node->type && init_node->type->ty == ARRAY) {
+                ty->array_size = init_node->type->array_size;
+            } else if (init_node->kind == ND_STRING) {
+                // string literal length + null sequence
+                ty->array_size = init_node->len + 1;
+            } else {
+                error_at(name->str, "unknown array type");
+            }
+        }
     }
+
+    // calculate offset after parsing (possible) initialization
+    var->offset = size_of(ty);
 
     vector_add(globals, var);
 }
