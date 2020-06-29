@@ -387,8 +387,6 @@ void gen_tree(Node *node) {
 
 // gen_global generates the assembly for the given global variable.
 void gen_global(GlobalVar *var) {
-    // to binary
-    printf(".data\n");
     printf("%.*s:\n", var->len, var->name);
     // If there is an initialization for this global variable
     if (var->init) {
@@ -432,6 +430,9 @@ void gen() {
     printf(".global main\n");
 
     // Print out global variables
+    if (vector_count(globals) + vector_count(strings) > 0) {
+        printf(".data\n");
+    }
     for (int i = 0; i < vector_count(globals); i++) {
         GlobalVar *var = (GlobalVar*) vector_get(globals, i);
         gen_global(var);
@@ -440,12 +441,11 @@ void gen() {
     // Print out string literals
     for (int i = 0; i < vector_count(strings); i++) {
         Node *literal = (Node*) vector_get(strings, i);
-        printf(".data\n");
         printf(".LC%d:\n", literal->label);
         printf("        .string \"%.*s\"\n", literal->len, literal->str);
     }
 
-    printf("        .text\n");
+    printf(".text\n");
 
     // Calculate the result for each functions
     for (int i = 0; i < vector_count(code); i++) {
