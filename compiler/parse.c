@@ -314,7 +314,7 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = (var ";" | var "=" expr ";" | func)*
+program    = (var ";" | var "=" init ";" | func)*
 ptr_type   = "int" | "char" | type "*"
 var        = ptr_type ident ("[" num "]")*
 func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
@@ -1110,19 +1110,21 @@ void global(Type *ptr_ty, Token *name) {
         Node *init_node = eval_global_init(init_node_before);
         var->init = init_node;
 
-        // support excluding array length: e.g. "int arr[] = {1, 2, 3};"
-        if (ty->ty == ARRAY && ty->array_size == -1) {
-            // ND_STRING (string literal) represents char array
-            if ((init_node->type && init_node->type->ty != ARRAY) && init_node->kind == ND_STRING) {
-                error_at(name->str, "expected array initializer");
-            }
-            if (init_node->type && init_node->type->ty == ARRAY) {
-                ty->array_size = init_node->type->array_size;
+        if (ty->ty == ARRAY) {
+            int initializer_length;
+            if (init_node->kind == ND_ARRAY) {
+                initializer_length = vector_count(init_node->arguments);
             } else if (init_node->kind == ND_STRING) {
                 // string literal length + null sequence
-                ty->array_size = init_node->len + 1;
+                initializer_length = init_node->len + 1;
             } else {
                 error_at(name->str, "unknown array type");
+            }
+            // support excluding array length: e.g. "int arr[] = {1, 2, 3};"
+            if (ty->array_size == -1) {
+                ty->array_size = initializer_length;
+            } else if (ty->array_size < initializer_length) {
+                error_at(name->str, "array initializer length exceeds array length");
             }
         }
     }
