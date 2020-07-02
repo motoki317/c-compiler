@@ -232,6 +232,28 @@ int test_23() {
     return gv_23[3] + gv_23[9];
 }
 
+// local variable initializer test
+
+// assert test_24 returns 8
+int test_24() {
+    int x = 8;
+    return x;
+}
+
+// assert test_25 returns 10
+int test_25() {
+    int x[] = {1, 2, test_24()};
+    return x[1] + x[2];
+}
+
+// assert test_26 returns 234
+int test_26() {
+    char s1[] = "oisu~";
+    char *s2 = "xxpoxx";
+    int x[3] = {1, 2, 3};
+    // 111 + 120 + 3 = 234
+    return s1[0] + s2[0] + x[2];
+}
 
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
@@ -305,6 +327,11 @@ int main() {
 
     assertEquals(test_21(), 2, "return value of test_21 does not equal to 2");
     assertEquals(test_22(), 3, "return value of test_22 does not equal to 3");
+    assertEquals(test_23(), 116, "return value of test_23 does not equal to 116");
+
+    assertEquals(test_24(), 8, "return value of test_24 does not equal to 8");
+    assertEquals(test_25(), 10, "return value of test_25 does not equal to 10");
+    assertEquals(test_26(), 234, "return value of test_26 does not equal to 234");
 
     /*
     This is a block comment

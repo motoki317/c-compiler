@@ -101,7 +101,8 @@ typedef enum {
     ND_LOCAL_VAR, // Local variable
     ND_GLOBAL_VAR, // Global variable
     ND_STRING, // String literal
-    ND_NUM, // Number
+    ND_NUM, // Number, int
+    ND_CHAR, // Number, char
     ND_ARRAY, // Array initializer for variables: e.g. "{1, 2, foo()}"
 } NodeKind;
 
@@ -114,7 +115,7 @@ struct Node {
     Node *right;
     Node *third;
     Node *fourth;
-    // Value here if the kind is ND_NUM
+    // Value here if the kind is ND_NUM or ND_CHAR
     int val;
     // Offset and type here if the kind is ND_LOCAL_VAR or ND_GLOBAL_VAR,
     // total local vars offset here if the kind is ND_FUNC
@@ -129,6 +130,7 @@ struct Node {
     // String literal here if the kind is ND_STRING
     char *str;
     int len;
+    // List of statements if the kind is ND_BLOCK
     // List of function arguments if the kind is ND_FUNC or ND_FUNC_CALL, elements: Node*
     // List of array elements if the kind is ND_ARRAY, elements: Node*
     Vector *arguments;

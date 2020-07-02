@@ -320,6 +320,7 @@ var        = ptr_type ident ("[" num "]")*
 func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
             | var ";"
+            | var "=" init ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
@@ -353,10 +354,18 @@ Node *new_node(NodeKind kind, Node *left, Node *right) {
     return node;
 }
 
-// new_node_num creates a new leaf number node for AST.
+// new_node_num creates a new ND_NUM node.
 Node *new_node_num(int val) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_NUM;
+    node->val = val;
+    return node;
+}
+
+// new_node_char creates a new ND_CHAR node.
+Node *new_node_char(int val) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_CHAR;
     node->val = val;
     return node;
 }
@@ -389,11 +398,14 @@ Node *new_local_var(Token *tok, Type *ty) {
     LocalVar *var = calloc(1, sizeof(LocalVar));
     var->name = tok->str;
     var->len = tok->len;
-    if (vector_count(locals) == 0) {
-        var->offset = size_of(ty);
-    } else {
-        LocalVar *last_var = (LocalVar*) vector_get_last(locals);
-        var->offset = last_var->offset + size_of(ty);
+    // claim offset only if the size is already defined (array size could be defined by initializer at local_var_init())
+    if (!(ty->ty == ARRAY && ty->array_size == -1)) {
+        if (vector_count(locals) == 0) {
+            var->offset = size_of(ty);
+        } else {
+            LocalVar *last_var = (LocalVar*) vector_get_last(locals);
+            var->offset = last_var->offset + size_of(ty);
+        }
     }
     var->type = ty;
     vector_add(locals, var);
@@ -461,6 +473,8 @@ Type *type_of(Node *node) {
             return node->type;
         case ND_NUM:
             return new_type(INT);
+        case ND_CHAR:
+            return new_type(CHAR);
         case ND_STRING:
             ty = new_type(ARRAY);
             ty->ptr_to = new_type(CHAR);
@@ -499,7 +513,7 @@ size_t size_of(Type *ty) {
         return 8;
     case ARRAY:
         if (ty->array_size == -1) {
-            error("array size is undefined");
+            error_at(token->str, "array size is undefined");
         }
         return ty->array_size * size_of(ty->ptr_to);
     }
@@ -644,6 +658,7 @@ Node *eval_global_init(Node *node) {
     case ND_STRING: // String literal
         return node;
     case ND_NUM: // Number
+    case ND_CHAR:
         return node;
     case ND_ARRAY:
         // validate
@@ -653,7 +668,7 @@ Node *eval_global_init(Node *node) {
         for (int i = 0; i < vector_count(node->arguments); i++) {
             Node *elt = (Node*) vector_get(node->arguments, i);
             if (!type_equals(node->type->ptr_to, type_of(elt))) {
-                error_at(elt->str, "unmatched type in array initializer element");
+                error_at(token->str, "unmatched type in array initializer element");
             }
             vector_set(node->arguments, i, eval_global_init(elt));
         }
@@ -903,6 +918,79 @@ Node *var(TypeKind base) {
     return new_local_var(tok, ty);
 }
 
+Node *init(Type *ty);
+
+size_t initializer_length();
+
+// local_var_init parses the local variable initializer as a ND_BLOCK node.
+Node *local_var_init(Node *var_node) {
+    // assert var_node->kind == ND_LOCAL_VAR
+    Node *init_node = init(var_node->type);
+
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_BLOCK;
+    node->arguments = new_vector();
+    // NOTE: adding var_node is actually not needed because the local var space is already prepared on stack by new_local_var()
+    vector_add(node->arguments, var_node);
+
+    // if the var was declared without array size
+    if (var_node->type->array_size == -1) {
+        var_node->type->array_size = initializer_length(init_node);
+        // claim local var offset in stack
+        LocalVar *var = (LocalVar*) vector_get_last(locals);
+        if (vector_count(locals) == 0) {
+            var->offset = size_of(var_node->type);
+        } else {
+            LocalVar *last_var = (LocalVar*) vector_get_last(locals);
+            var->offset = last_var->offset + size_of(var_node->type);
+        }
+        var_node->offset = var->offset;
+    }
+
+    // if the initializer is an array initializer (e.g. "{1, 2, foo()}"), substitute them one by one
+    // x[0] = 1; // *(x + 0) = 1;
+    // x[1] = 2; // *(x + 1) = 2;
+    // and so on
+    if (init_node->kind == ND_ARRAY) {
+        // check type and size
+        if (!var_node->type || var_node->type->ty != ARRAY) {
+            error_at(var_node->str, "expected array type");
+        }
+        if (var_node->type->array_size < initializer_length(init_node)) {
+            error_at(var_node->str, "array initializer length exceeds array length");
+        }
+
+        for (int i = 0; i < vector_count(init_node->arguments); i++) {
+            Node *rhs = (Node*) vector_get(init_node->arguments, i);
+            // x + i
+            Node *adder = calloc(1, sizeof(Node));
+            adder->kind = ND_ADD;
+            adder->left = var_node;
+            adder->right = new_node_num(i);
+            // *(x + i)
+            Node *lhs = calloc(1, sizeof(Node));
+            lhs->kind = ND_DEREF;
+            lhs->left = adder;
+            // *(x + i) = rhs;
+            Node *next = calloc(1, sizeof(Node));
+            next->kind = ND_ASSIGN;
+            next->left = lhs;
+            next->right = rhs;
+
+            vector_add(node->arguments, next);
+        }
+    } else {
+        // else, just substitute it
+        Node *next = calloc(1, sizeof(Node));
+        next->kind = ND_ASSIGN;
+        next->left = var_node;
+        next->right = init_node;
+
+        vector_add(node->arguments, next);
+    }
+    return node;
+}
+
 // stmt parses the next 'stmt' (in EBNF) as AST.
 Node *stmt() {
     Node *node;
@@ -911,6 +999,9 @@ Node *stmt() {
     if (base_ty) {
         // local variable declaration
         node = var(base_ty->ty);
+        if (consume("=")) {
+            node = local_var_init(node);
+        }
         expect(";");
         return node;
     } else if (consume_keyword("return")) {
@@ -991,14 +1082,9 @@ Node *stmt() {
     } else if (consume("{")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_BLOCK;
-        Node *cur = node;
-
+        node->arguments = new_vector();
         while (!consume("}")) {
-            cur->left = stmt();
-            Node *next = calloc(1, sizeof(Node));
-            next->kind = ND_BLOCK;
-            cur->right = next;
-            cur = next;
+            vector_add(node->arguments, stmt());
         }
     } else {
         node = expr();
@@ -1041,14 +1127,10 @@ Node *func(Type *return_type, Token *name) {
     expect("{");
     Node *block = calloc(1, sizeof(Node));
     block->kind = ND_BLOCK;
-    Node *cur = block;
+    block->arguments = new_vector();
 
     while (!consume("}")) {
-        cur->left = stmt();
-        Node *next = calloc(1, sizeof(Node));
-        next->kind = ND_BLOCK;
-        cur->right = next;
-        cur = next;
+        vector_add(block->arguments, stmt());
     }
 
     node->left = block;
@@ -1063,7 +1145,8 @@ Node *func(Type *return_type, Token *name) {
 
 // init parses the next 'init' (in EBNF) as AST.
 // For variable initialization.
-Node *init() {
+// ty: Destination type
+Node *init(Type *ty) {
     if (consume("{")) {
         Vector *elements = new_vector();
         while (!consume("}")) {
@@ -1077,14 +1160,42 @@ Node *init() {
         Node *node = calloc(1, sizeof(Node));
         node->kind = ND_ARRAY;
         node->type = new_type(ARRAY);
-        if (node->type->array_size == -1) {
-            node->type->array_size = vector_count(elements);
-        }
+        node->type->array_size = vector_count(elements);
         node->arguments = elements;
         return node;
     }
 
-    return expr();
+    Node *node = expr();
+    // If the destination type is char[] and the initializer is string literal, we need to be careful
+    // convert string literal "foo" to array initializer "{'f', 'o', 'o', '\0'}"
+    if (ty->ty == ARRAY && ty->ptr_to->ty == CHAR && node->kind == ND_STRING) {
+        Vector *elements = new_vector();
+        for (int i = 0; i < node->len; i++) {
+            vector_add(elements, new_node_char((node->str)[i]));
+        }
+        // null sequence '0'
+        vector_add(elements, new_node_char(0));
+
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_ARRAY;
+        node->type = new_type(ARRAY);
+        node->type->ptr_to = new_type(CHAR);
+        node->type->array_size = vector_count(elements);
+        node->arguments = elements;
+    }
+    return node;
+}
+
+// initializer_length returns initializer length for the given node from init() with kind ND_ARRAY or ND_STRING.
+size_t initializer_length(Node *node) {
+    switch (node->kind) {
+    case ND_ARRAY:
+        return vector_count(node->arguments);
+    case ND_STRING:
+        return node->len + 1;
+    default:
+        error_at(token->str, "unknown array type");
+    }
 }
 
 // global parses the next global variable and defines it.
@@ -1102,7 +1213,7 @@ void global(Type *ptr_ty, Token *name) {
 
     // initializer
     if (consume("=")) {
-        Node *init_node_before = init();
+        Node *init_node_before = init(ty);
         if (ty->ty == ARRAY && init_node_before->type && init_node_before->type->ty == ARRAY) {
             // for eval_global_init to know which type this array is composed of
             init_node_before->type->ptr_to = ty->ptr_to;
@@ -1111,19 +1222,11 @@ void global(Type *ptr_ty, Token *name) {
         var->init = init_node;
 
         if (ty->ty == ARRAY) {
-            int initializer_length;
-            if (init_node->kind == ND_ARRAY) {
-                initializer_length = vector_count(init_node->arguments);
-            } else if (init_node->kind == ND_STRING) {
-                // string literal length + null sequence
-                initializer_length = init_node->len + 1;
-            } else {
-                error_at(name->str, "unknown array type");
-            }
+            size_t init_length = initializer_length(init_node);
             // support excluding array length: e.g. "int arr[] = {1, 2, 3};"
             if (ty->array_size == -1) {
-                ty->array_size = initializer_length;
-            } else if (ty->array_size < initializer_length) {
+                ty->array_size = init_length;
+            } else if (ty->array_size < init_length) {
                 error_at(name->str, "array initializer length exceeds array length");
             }
         }

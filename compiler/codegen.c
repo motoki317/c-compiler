@@ -77,6 +77,7 @@ void multiply_ptr_value(Node *node) {
 void gen_tree(Node *node) {
     switch (node->kind) {
     case ND_NUM:
+    case ND_CHAR:
         printf("        push %d\n", node->val);
         return;
     case ND_STRING:
@@ -233,11 +234,11 @@ void gen_tree(Node *node) {
         printf("        push 0\n");
         return;
     case ND_BLOCK:
-        while(node->left) {
-            gen_tree(node->left);
+        for (int i = 0; i < vector_count(node->arguments); i++) {
+            Node *next = (Node*) vector_get(node->arguments, i);
+            gen_tree(next);
             // pop the result so it doesn't stay on stack
             printf("        pop rax\n");
-            node = node->right;
         }
         printf("        push rax\n");
         return;
@@ -396,6 +397,7 @@ int max(int a, int b) {
 void gen_global_node(Node *node, Type *ty) {
     switch (node->kind) {
     case ND_NUM:
+    case ND_CHAR:
         // supposing the type is int, for now
         switch (size_of(ty)) {
         case 1:
@@ -449,7 +451,7 @@ void gen_global_node(Node *node, Type *ty) {
         }
         break;
     default:
-        error_at(node->str, "unknown initialization");
+        error("unknown initialization");
     }
 }
 
