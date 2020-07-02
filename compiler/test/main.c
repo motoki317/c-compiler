@@ -255,6 +255,13 @@ int test_26() {
     return s1[0] + s2[0] + x[2];
 }
 
+// assert test_27 returns 98
+int test_27() {
+    char s[][4] = {"ok", "bar"};
+    // 'b' = 98
+    return s[1][0];
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -332,6 +339,7 @@ int main() {
     assertEquals(test_24(), 8, "return value of test_24 does not equal to 8");
     assertEquals(test_25(), 10, "return value of test_25 does not equal to 10");
     assertEquals(test_26(), 234, "return value of test_26 does not equal to 234");
+    assertEquals(test_27(), 98, "return value of test_27 does not equal to 98");
 
     /*
     This is a block comment

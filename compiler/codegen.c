@@ -143,7 +143,10 @@ void gen_tree(Node *node) {
         if (ty->ty == PTR || ty->ty == ARRAY) {
             ty = ty->ptr_to;
         }
-        load_from_rax_to_rax(size_of(ty));
+        // load from address only if this is not multi-dimensional array, which is linearly on stack
+        if (ty->ty != ARRAY) {
+            load_from_rax_to_rax(size_of(ty));
+        }
         printf("        push rax\n");
         return;
     case ND_IF:
@@ -313,6 +316,8 @@ void gen_tree(Node *node) {
         printf("        pop rbp\n");
         printf("        ret\n");
         return;
+    case ND_ARRAY:
+        error("got node array\n");
     }
 
     // Calculate children and push them onto the 'rsp', register stack pointer.

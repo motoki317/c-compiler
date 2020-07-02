@@ -337,12 +337,12 @@ unary      = "sizeof" unary
             | ("+" | "-")? primary
             | "*" unary
             | "&" unary
-primary    = num
-            | ident
-            | string_literal
-            | ident "(" (expr ("," expr)*)? ")"
-            | ident "[" expr "]"
-            | "(" expr ")"
+primary    = num primary_rest
+            | ident primary_rest
+            | string_literal primary_rest
+            | ident "(" (expr ("," expr)*)? ")" primary_rest
+            | "(" expr ")" primary_rest
+primary_rest = "[" expr "]" primary_rest | ""
 */
 
 // new_node creates a new AST node according to the given right and left children.
@@ -680,6 +680,24 @@ Node *eval_global_init(Node *node) {
 
 Node *expr();
 
+Node *primary_rest(Node *node) {
+    if (consume("[")) {
+        // parse "a[b]" syntax (array indexing) as "*(a + b)"
+        Node *parent = calloc(1, sizeof(Node));
+        Node *right = expr();
+        expect("]");
+
+        parent->kind = ND_DEREF;
+        Node *adder = calloc(1, sizeof(Node));
+        adder->kind = ND_ADD;
+        adder->left = node;
+        adder->right = right;
+        parent->left = adder;
+        return primary_rest(parent);
+    }
+    return node;
+}
+
 // primary parses the next 'primary' (in EBNF) as AST.
 Node *primary() {
     // If the next token is opening parenthesis, expect 'expr' inside.
@@ -698,7 +716,7 @@ Node *primary() {
         node->len = tok->len;
         node->label = vector_count(strings);
         vector_add(strings, node);
-        return node;
+        return primary_rest(node);
     }
 
     // If the next token is identifier (local variable), consume it.
@@ -720,7 +738,7 @@ Node *primary() {
                 }
             }
             node->arguments = arguments;
-            return node;
+            return primary_rest(node);
         }
 
         // Local variable or global variable
@@ -746,21 +764,7 @@ Node *primary() {
             node->len = var->len;
         }
 
-        if (consume("[")) {
-            // parse "a[b]" syntax (array indexing) as "*(a + b)"
-            Node *parent = calloc(1, sizeof(Node));
-            Node *right = expr();
-            expect("]");
-
-            parent->kind = ND_DEREF;
-            Node *adder = calloc(1, sizeof(Node));
-            adder->kind = ND_ADD;
-            adder->left = node;
-            adder->right = right;
-            parent->left = adder;
-            return parent;
-        }
-        return node;
+        return primary_rest(node);
     }
 
     // Otherwise expect a number.
@@ -922,6 +926,43 @@ Node *init(Type *ty);
 
 size_t initializer_length();
 
+// expand_local_array_initializer supports multi-dimensional array initializer for local variables.
+void expand_local_array_initializer(Vector *elements, Node *init_node, Node *var_node) {
+    if (init_node->kind != ND_ARRAY) {
+        // *(x + i) = rhs;
+        Node *next = calloc(1, sizeof(Node));
+        next->kind = ND_ASSIGN;
+        next->left = var_node;
+        next->right = init_node;
+
+        vector_add(elements, next);
+        return;
+    }
+
+    // check type and size
+    if (type_of(var_node)->ty != ARRAY) {
+        error_at(var_node->str, "expected array type");
+    }
+    if (type_of(var_node)->array_size < initializer_length(init_node)) {
+        error_at(var_node->str, "array initializer length exceeds array length");
+    }
+
+    for (int i = 0; i < vector_count(init_node->arguments); i++) {
+        // x + i
+        Node *adder = calloc(1, sizeof(Node));
+        adder->kind = ND_ADD;
+        adder->left = var_node;
+        adder->right = new_node_num(i);
+        // *(x + i)
+        Node *lhs = calloc(1, sizeof(Node));
+        lhs->kind = ND_DEREF;
+        lhs->left = adder;
+
+        Node *rhs = (Node*) vector_get(init_node->arguments, i);
+        expand_local_array_initializer(elements, rhs, lhs);
+    }
+}
+
 // local_var_init parses the local variable initializer as a ND_BLOCK node.
 Node *local_var_init(Node *var_node) {
     // assert var_node->kind == ND_LOCAL_VAR
@@ -951,43 +992,7 @@ Node *local_var_init(Node *var_node) {
     // x[0] = 1; // *(x + 0) = 1;
     // x[1] = 2; // *(x + 1) = 2;
     // and so on
-    if (init_node->kind == ND_ARRAY) {
-        // check type and size
-        if (!var_node->type || var_node->type->ty != ARRAY) {
-            error_at(var_node->str, "expected array type");
-        }
-        if (var_node->type->array_size < initializer_length(init_node)) {
-            error_at(var_node->str, "array initializer length exceeds array length");
-        }
-
-        for (int i = 0; i < vector_count(init_node->arguments); i++) {
-            Node *rhs = (Node*) vector_get(init_node->arguments, i);
-            // x + i
-            Node *adder = calloc(1, sizeof(Node));
-            adder->kind = ND_ADD;
-            adder->left = var_node;
-            adder->right = new_node_num(i);
-            // *(x + i)
-            Node *lhs = calloc(1, sizeof(Node));
-            lhs->kind = ND_DEREF;
-            lhs->left = adder;
-            // *(x + i) = rhs;
-            Node *next = calloc(1, sizeof(Node));
-            next->kind = ND_ASSIGN;
-            next->left = lhs;
-            next->right = rhs;
-
-            vector_add(node->arguments, next);
-        }
-    } else {
-        // else, just substitute it
-        Node *next = calloc(1, sizeof(Node));
-        next->kind = ND_ASSIGN;
-        next->left = var_node;
-        next->right = init_node;
-
-        vector_add(node->arguments, next);
-    }
+    expand_local_array_initializer(node->arguments, init_node, var_node);
     return node;
 }
 
@@ -1148,9 +1153,12 @@ Node *func(Type *return_type, Token *name) {
 // ty: Destination type
 Node *init(Type *ty) {
     if (consume("{")) {
+        if (ty->ty != ARRAY) {
+            error_at(token->str, "expected array type");
+        }
         Vector *elements = new_vector();
         while (!consume("}")) {
-            vector_add(elements, expr());
+            vector_add(elements, init(ty->ptr_to));
             if (!consume(",")) {
                 expect("}");
                 break;
