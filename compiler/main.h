@@ -46,18 +46,26 @@ extern Token *token;
 typedef struct Type Type;
 
 typedef enum {
+    VOID, // TODO: properly support void type?
     CHAR,
     INT,
     PTR,
     ARRAY,
+    FUNC,
 } TypeKind;
 
 // Variable type
 struct Type {
   TypeKind ty;
   // pointer to / array of what type
-  struct Type *ptr_to;
+  // return type of func
+  Type *ptr_to;
   size_t array_size;
+  // parameters of func
+  Vector *params;
+  // identifier
+  char *str;
+  int len;
 };
 
 typedef struct LocalVar LocalVar;

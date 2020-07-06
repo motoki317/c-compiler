@@ -23,7 +23,7 @@ char symbols[][3] = {
 char keywords[][8] = {
     "return", "if", "else",
     "for", "while", "int",
-    "sizeof", "char",
+    "sizeof", "char", "void",
 };
 
 int next_label = 0;
@@ -314,13 +314,13 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = (var ";" | var "=" init ";" | func)*
-ptr_type   = "int" | "char" | type "*"
-var        = ptr_type ident ("[" num "]")*
-func       = ptr_type ident "(" (var ("," var)*)? ")" "{" stmt* "}"
+program    = (type ";" | type "=" init ";" | func)*
+ptr_type   = "int" | "char" | "void" | type "*"
+type       = ptr_type (ident | "(" type ")") (("[" num "]")* | "(" (type ("," type)*)? ")")
+func       = ptr_type ident "(" (type ("," type)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
-            | var ";"
-            | var "=" init ";"
+            | type ";"
+            | type "=" init ";"
             | "{" stmt* "}"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "while" "(" expr ")" stmt
@@ -392,12 +392,31 @@ GlobalVar *find_global_var(Token *tok) {
     return NULL;
 }
 
+// Retrieves identifier for the given type. Returns NULL if not found.
+Token *retrieve_type_identifier(Type *ty) {
+    Type *next = ty;
+    while (next->ptr_to && next->str == NULL) {
+        next = next->ptr_to;
+    }
+    if (next->str == NULL) {
+        return NULL;
+    }
+    Token *ret = calloc(1, sizeof(Token));
+    ret->str = next->str;
+    ret->len = next->len;
+    return ret;
+}
+
 // new_local_var returns a local variable as node.
 // Always generates a new local variable and appends it to the current local variables.
-Node *new_local_var(Token *tok, Type *ty) {
+Node *new_local_var(Type *ty) {
     LocalVar *var = calloc(1, sizeof(LocalVar));
-    var->name = tok->str;
-    var->len = tok->len;
+    Token *name = retrieve_type_identifier(ty);
+    if (name == NULL) {
+        error_at(token->str, "expected identifier for a variable");
+    }
+    var->name = name->str;
+    var->len = name->len;
     // claim offset only if the size is already defined (array size could be defined by initializer at local_var_init())
     if (!(ty->ty == ARRAY && ty->array_size == -1)) {
         if (vector_count(locals) == 0) {
@@ -505,6 +524,8 @@ bool type_equals(Type *first, Type *second) {
 // size_of returns the size of the given type in bytes.
 size_t size_of(Type *ty) {
     switch (ty->ty) {
+    case VOID:
+        return 0;
     case CHAR:
         return 1;
     case INT:
@@ -516,6 +537,9 @@ size_t size_of(Type *ty) {
             error_at(token->str, "array size is undefined");
         }
         return ty->array_size * size_of(ty->ptr_to);
+    case FUNC:
+        // implicit conversion to pointer
+        return 8;
     }
 }
 
@@ -704,7 +728,7 @@ Node *primary() {
     if (consume("(")) {
         Node *node = expr();
         expect(")");
-        return node;
+        return primary_rest(node);
     }
 
     // String literal
@@ -876,21 +900,21 @@ Type *base_type() {
         return new_type(INT);
     } else if (consume_keyword("char")) {
         return new_type(CHAR);
+    } else if (consume_keyword("void")) {
+        return new_type(VOID);
     }
     return NULL;
 }
 
 // ptr_type parses the (pointer part of the) type.
-Type *ptr_type(TypeKind base) {
+Type *ptr_type(Type* base) {
     if (consume("*")) {
         Type *ty = calloc(1, sizeof(Type));
         ty->ty = PTR;
         ty->ptr_to = ptr_type(base);
         return ty;
     }
-    Type *ty = calloc(1, sizeof(Type));
-    ty->ty = base;
-    return ty;
+    return base;
 }
 
 // array_type parses the (array part of the) type.
@@ -914,12 +938,70 @@ Type *array_type(Type *base) {
     return base;
 }
 
-// var parses the next 'var' (in EBNF) as AST.
-Node *var(TypeKind base) {
+// combine_nested_type is a helper function for nested_type parsing.
+Type *combine_nested_type(Type *nested, Type *base) {
+    Type *next = nested;
+    while (next->ptr_to) {
+        next = next->ptr_to;
+    }
+    next->ptr_to = base;
+    return nested;
+}
+
+// nested_type parses the nested type with the given base type.
+Type *nested_type(Type *base) {
     Type *ptr_ty = ptr_type(base);
-    Token *tok = expect_identifier();
-    Type *ty = array_type(ptr_ty);
-    return new_local_var(tok, ty);
+    Type *nested = NULL;
+    Token *tok = NULL;
+    if (consume("(")) {
+        // combine base type later
+        nested = nested_type(NULL);
+        expect(")");
+    } else {
+        tok = consume_identifier();
+    }
+    if (!consume("(")) {
+        Type *ret;
+        if (nested) {
+            ret = combine_nested_type(nested, array_type(ptr_ty));
+        } else {
+            ret = array_type(ptr_ty);
+        }
+        if (tok) {
+            ret->str = tok->str;
+            ret->len = tok->len;
+        }
+        return ret;
+    }
+    // consumed "(", function type
+    // if there is a pointer type, nested indicates a pointer type
+    // so append params to base type
+    Type *fun = new_type(FUNC);
+    fun->ptr_to = ptr_ty;
+    fun->params = new_vector();
+    if (tok) {
+        fun->str = tok->str;
+        fun->len = tok->len;
+    }
+    while (!consume(")")) {
+        Type *next_param_base_type = base_type();
+        if (next_param_base_type == NULL) {
+            error_at(token->str, "Base type expected, but got %.*s", token->len, token->str);
+        }
+        Type *next_param_type = nested_type(next_param_base_type);
+        vector_add(fun->params, next_param_type);
+
+        if (!consume(",")) {
+            expect(")");
+            break;
+        }
+    }
+
+    if (nested) {
+        return combine_nested_type(nested, fun);
+    } else {
+        return fun;
+    }
 }
 
 Node *init(Type *ty);
@@ -1003,7 +1085,8 @@ Node *stmt() {
     Type *base_ty = base_type();
     if (base_ty) {
         // local variable declaration
-        node = var(base_ty->ty);
+        Type *ty = nested_type(base_ty);
+        node = new_local_var(ty);
         if (consume("=")) {
             node = local_var_init(node);
         }
@@ -1100,31 +1183,27 @@ Node *stmt() {
 }
 
 // func parses the next 'func' (in EBNF) as AST.
-Node *func(Type *return_type, Token *name) {
+Node *func(Type *ty) {
+    if (ty->str == NULL) {
+        error_at(token->str, "expected identifier for a function");
+    }
+
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
-    node->type = return_type;
-    node->str = name->str;
-    node->len = name->len;
+    node->type = ty->ptr_to;
+    node->str = ty->str;
+    node->len = ty->len;
 
     // current function's local variables, for new_local_var function to append to this
     locals = new_vector();
 
     // read function arguments
     Vector *arguments = new_vector();
-    while (!consume(")")) {
-        Type *base_ty = base_type();
-        if (base_ty == NULL) {
-            error_at(token->str, "Base type expected, but got %.*s", token->len, token->str);
-        }
+    for (int i = 0; i < vector_count(ty->params); i++) {
+        Type *next_arg_type = (Type*) vector_get(ty->params, i);
         // treat each function argument as a local variable
-        Node *local_var = var(base_ty->ty);
+        Node *local_var = new_local_var(next_arg_type);
         vector_add(arguments, local_var);
-
-        if (!consume(",")) {
-            expect(")");
-            break;
-        }
     }
     node->arguments = arguments;
 
@@ -1207,8 +1286,12 @@ size_t initializer_length(Node *node) {
 }
 
 // global parses the next global variable and defines it.
-void global(Type *ptr_ty, Token *name) {
-    Type *ty = array_type(ptr_ty);
+void global(Type *ty) {
+    Token *name = retrieve_type_identifier(ty);
+    if (name == NULL) {
+        error_at(token->str, "expected identifier for a global variable");
+    }
+
     // Check if the name has already been used
     if (find_global_var(name)) {
         error_at(name->str, "Global variable %.*s has already been declared", name->len, name->str);
@@ -1254,16 +1337,14 @@ void program() {
 
     while (!at_eof()) {
         // Check if the next token is a global variable, or a function.
-        Type *base_ty = base_type();
-        Type *type = ptr_type(base_ty->ty);
-        Token *tok = expect_identifier();
-
-        if (consume("(")) {
+        Type *base = base_type();
+        Type *ty = nested_type(base);
+        if (ty->ty == FUNC) {
             // function
-            vector_add(code, func(type, tok));
+            vector_add(code, func(ty));
         } else {
             // global variable
-            global(type, tok);
+            global(ty);
             expect(";");
         }
     }

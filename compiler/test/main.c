@@ -262,6 +262,20 @@ int test_27() {
     return s[1][0];
 }
 
+// helper function for test_28 (nested type test)
+// type: func() * [1] int
+int (*test_28_helper())[1] {
+    int a[1];
+    a = calloc(1, sizeof(a));
+    a[0] = 10;
+    return &a;
+}
+
+// assert test_28 returns 10
+int test_28() {
+    return (*test_28_helper())[0];
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -340,6 +354,8 @@ int main() {
     assertEquals(test_25(), 10, "return value of test_25 does not equal to 10");
     assertEquals(test_26(), 234, "return value of test_26 does not equal to 234");
     assertEquals(test_27(), 98, "return value of test_27 does not equal to 98");
+
+    assertEquals(test_28(), 10, "return value of test_28 does not equal to 10");
 
     /*
     This is a block comment
