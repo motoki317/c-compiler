@@ -372,6 +372,8 @@ Node *new_node_char(int val) {
 
 // find_local_var returns local var struct if name in the given token has been used before; returns NULL otherwise.
 LocalVar *find_local_var(Token *tok) {
+    // Not inside function parsing
+    if (!locals) return NULL;
     for (int i = 0; i < vector_count(locals); i++) {
         LocalVar *var = (LocalVar*) vector_get(locals, i);
         if (var->len == tok->len && memcmp(var->name, tok->str, var->len) == 0) {
