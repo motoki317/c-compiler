@@ -151,8 +151,8 @@ size_t size_of(Type *ty);
 // type_of returns the type of the given node.
 Type *type_of(Node *node);
 
-// Code vector, elements: Node*
-extern Vector *code;
+// List of functions, elements: Node*
+extern Vector *functions;
 
 typedef struct GlobalVar GlobalVar;
 

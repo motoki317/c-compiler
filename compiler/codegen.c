@@ -536,7 +536,7 @@ void gen() {
     printf(".text\n");
 
     // Calculate the result for each functions
-    for (int i = 0; i < vector_count(code); i++) {
-        gen_tree(vector_get(code, i));
+    for (int i = 0; i < vector_count(functions); i++) {
+        gen_tree(vector_get(functions, i));
     }
 }

@@ -25,6 +25,7 @@ char keywords[][8] = {
     "return", "if", "else",
     "for", "while", "int",
     "sizeof", "char", "void",
+    "typedef",
 };
 
 int next_label = 0;
@@ -57,6 +58,9 @@ struct Token {
     int len;
 };
 
+// Current token
+Token *token;
+
 // Current function's local variables
 // elements: LocalVar*
 Vector *locals;
@@ -65,14 +69,21 @@ Vector *locals;
 // elements: GlobalVar*
 Vector *globals;
 
-// Current token
-Token *token;
-
-// Each statements
-Vector *code;
+// List of functions
+Vector *functions;
 
 // String literals
 Vector *strings;
+
+typedef struct DefinedType DefinedType;
+
+struct DefinedType {
+    char *name;
+    Type *ty;
+};
+
+// List of defined types, elements: *DefinedType
+Vector *types;
 
 // consume returns true when the current token is the given expected operator, and proceeds to the next token.
 // Returns false otherwise.
@@ -118,6 +129,19 @@ void expect_keyword(char *keyword) {
 // consume_identifier consumes the next identifier token if exists, and proceed to the next token.
 Token *consume_identifier() {
     if (token->kind != TK_IDENTIFIER) {
+        return NULL;
+    }
+    Token *ret = token;
+    token = token->next;
+    return ret;
+}
+
+// consume_identifier_with_name consumes the next identifier token if exists, and checks the identifier name.
+// Intended for use with defined types with typedef.
+Token *consume_identifier_with_name(char *name) {
+    if (token->kind != TK_IDENTIFIER ||
+        strlen(name) != token->len ||
+        memcmp(name, token->str, token->len)) {
         return NULL;
     }
     Token *ret = token;
@@ -315,7 +339,9 @@ Token *tokenize(char *p) {
 
 /**
 Program syntax in EBNF
-program    = (type ";" | type "=" init ";" | func)*
+program    = (type ";" | type "=" init ";" | func | typedef)*
+typedef    = "typedef" type;
+// base type be dynamically added by "typedef" statements
 ptr_type   = "int" | "char" | "void" | type "*"
 type       = ptr_type (ident | "(" type ")") (("[" num "]")* | "(" (type ("," type)*)? ")")
 func       = ptr_type ident "(" (type ("," type)*)? ")" "{" stmt* "}"
@@ -486,8 +512,8 @@ Type *type_of(Node *node) {
             // treat results of logic operators (always 1 or 0) as type int
             return new_type(INT);
         case ND_FUNC_CALL:
-            for (int i = 0; i < vector_count(code); i++) {
-                Node *stmt = (Node*) vector_get(code, i);
+            for (int i = 0; i < vector_count(functions); i++) {
+                Node *stmt = (Node*) vector_get(functions, i);
                 if (memcmp(stmt->str, node->str, node->len) == 0) {
                     return stmt->type;
                 }
@@ -942,6 +968,12 @@ Type *base_type() {
     } else if (consume_keyword("void")) {
         return new_type(VOID);
     }
+    for (int i = 0; i < vector_count(types); i++) {
+        DefinedType *definedType = (DefinedType*) vector_get(types, i);
+        if (consume_identifier_with_name(definedType->name)) {
+            return definedType->ty;
+        }
+    }
     return NULL;
 }
 
@@ -977,7 +1009,7 @@ Type *array_type(Type *base) {
     return base;
 }
 
-// combine_nested_type is a helper function for nested_type parsing.
+// combine_nested_type is a helper function for nested type parsing.
 Type *combine_nested_type(Type *nested, Type *base) {
     Type *next = nested;
     while (next->ptr_to) {
@@ -987,16 +1019,18 @@ Type *combine_nested_type(Type *nested, Type *base) {
     return nested;
 }
 
-// nested_type parses the nested type with the given base type.
-Type *nested_type(Type *base) {
+// type parses the next 'type' in EBNF. Parses nested type.
+Type *type(Type *base) {
     Type *ptr_ty = ptr_type(base);
     Type *nested = NULL;
     Token *tok = NULL;
     if (consume("(")) {
+        // nested type
         // combine base type later
-        nested = nested_type(NULL);
+        nested = type(NULL);
         expect(")");
     } else {
+        // variable or function identifier
         tok = consume_identifier();
     }
     if (!consume("(")) {
@@ -1027,7 +1061,7 @@ Type *nested_type(Type *base) {
         if (next_param_base_type == NULL) {
             error_at(token->str, "Base type expected, but got %.*s", token->len, token->str);
         }
-        Type *next_param_type = nested_type(next_param_base_type);
+        Type *next_param_type = type(next_param_base_type);
         vector_add(fun->params, next_param_type);
 
         if (!consume(",")) {
@@ -1124,7 +1158,7 @@ Node *stmt() {
     Type *base_ty = base_type();
     if (base_ty) {
         // local variable declaration
-        Type *ty = nested_type(base_ty);
+        Type *ty = type(base_ty);
         node = new_local_var(ty);
         if (consume("=")) {
             node = local_var_init(node);
@@ -1368,19 +1402,47 @@ void global(Type *ty) {
     vector_add(globals, var);
 }
 
+// type_def parses the next 'typedef' in EBNF.
+void type_def() {
+    Type *base = base_type();
+    Type *ty = type(base);
+    if (ty->str == NULL) {
+        error_at(token->str, "expected identifier for typedef");
+    }
+
+    DefinedType *defined = calloc(1, sizeof(DefinedType));
+    char *name = calloc(1, ty->len + 1);
+    memcpy(name, ty->str, ty->len);
+    defined->name = name;
+    defined->ty = ty;
+
+    vector_add(types, defined);
+}
+
 // program parses the next 'program' (in EBNF) as AST, a.k.a. the whole program.
 void program() {
-    code = new_vector();
+    functions = new_vector();
     globals = new_vector();
     strings = new_vector();
+    types = new_vector();
 
     while (!at_eof()) {
+        // typedef
+        if (consume_keyword("typedef")) {
+            type_def();
+            expect(";");
+            continue;
+        }
+
         // Check if the next token is a global variable, or a function.
         Type *base = base_type();
-        Type *ty = nested_type(base);
+        if (!base) {
+            error_at(token->str, "expected base type");
+        }
+        Type *ty = type(base);
         if (ty->ty == FUNC) {
             // function
-            vector_add(code, func(ty));
+            vector_add(functions, func(ty));
         } else {
             // global variable
             global(ty);

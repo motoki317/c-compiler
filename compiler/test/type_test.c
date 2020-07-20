@@ -25,7 +25,7 @@ int **x22() {} //	func() * * int
 int (*x23())[1] {} //	func() * [] int
 int (*x24())() {} //	func() * func() int
 
-// func signal(int i, * func(int) void f) * func(int) void
+// func signal(i int, f *func(int) void) *func(int) void
 void (*signal(int i, void (*f)(int)))(int) {}
 
 int main() {

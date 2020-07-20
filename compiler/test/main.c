@@ -324,6 +324,14 @@ int test_33() {
     return gv_33;
 }
 
+typedef int my_int;
+
+// assert test_34 returns 57
+int test_34() {
+    my_int i = 57;
+    return i;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -410,6 +418,8 @@ int main() {
     assertEquals(test_31(), 1, "return value of test_31 does not equal 1");
     assertEquals(test_32(), 1, "return value of test_32 does not equal 1");
     assertEquals(test_33(), 1, "return value of test_33 does not equal 1");
+
+    assertEquals(test_34(), 57, "return value of test_34 does not equal 57");
 
     /*
     This is a block comment
