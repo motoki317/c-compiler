@@ -99,6 +99,8 @@ typedef enum {
     ND_DIV, // /
     ND_ADDR, // &
     ND_DEREF, // *
+    ND_LAND, // &&
+    ND_LOR, // ||
     ND_FUNC, // function
     ND_FUNC_CALL, // function call
     ND_RETURN, // "return" statement

@@ -16,6 +16,7 @@ char symbols[][3] = {
     "(", ")",
     ";", "=",
     "{", "}",
+    "&&", "||",
     ",", "&",
     "[", "]",
 };
@@ -328,7 +329,9 @@ stmt       = expr ";"
             | "return" expr ";"
 init       = "{" (expr ("," expr)*)? "}" | expr
 expr       = assign
-assign     = equality ("=" assign)?
+assign     = logic_ors ("=" assign)?
+logic_ors  = logic "||" logic_ors
+logic      = equality "&&" logic
 equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
@@ -881,9 +884,31 @@ Node *equality() {
     }
 }
 
+// logic parses the next 'logic' in EBNF as AST.
+Node *logic() {
+    Node *node = equality();
+    if (consume("&&")) {
+        node = new_node(ND_LAND, node, logic());
+        node->label = next_label;
+        next_label += 3;
+    }
+    return node;
+}
+
+// logic_ors parses the next 'logic_ors' in EBNF as AST.
+Node *logic_ors() {
+    Node *node = logic();
+    if (consume("||")) {
+        node = new_node(ND_LOR, node, logic_ors());
+        node->label = next_label;
+        next_label += 3;
+    }
+    return node;
+}
+
 // assign parses the next 'assign' (in EBNF) as AST.
 Node *assign() {
-    Node *node = equality();
+    Node *node = logic_ors();
     if (consume("=")) {
         node = new_node(ND_ASSIGN, node, assign());
     }

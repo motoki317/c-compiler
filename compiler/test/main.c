@@ -276,6 +276,47 @@ int test_28() {
     return (*test_28_helper())[0];
 }
 
+// assert test_29 returns 1
+int test_29() {
+    int i = 5;
+    if (1 && i > 4) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+// assert test_30 returns 0
+int test_30() {
+    // purposefully not initialized
+    int *p;
+    // test minimal evaluation
+    if (0 && *p) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+// assert test_31 returns 1
+int test_31() {
+    // purposefully not initialized
+    int *p;
+    // test minimal evaluation
+    if (1 || *p) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+// assert test_32 returns 1
+int test_32() {
+    int a = 6;
+    int b = 10;
+    return 0 || 1 && a > 5 || b < 10;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -356,6 +397,11 @@ int main() {
     assertEquals(test_27(), 98, "return value of test_27 does not equal to 98");
 
     assertEquals(test_28(), 10, "return value of test_28 does not equal to 10");
+
+    assertEquals(test_29(), 1, "return value of test_29 does not equal 1");
+    assertEquals(test_30(), 0, "return value of test_30 does not equal 0");
+    assertEquals(test_31(), 1, "return value of test_31 does not equal 1");
+    assertEquals(test_32(), 1, "return value of test_32 does not equal 1");
 
     /*
     This is a block comment

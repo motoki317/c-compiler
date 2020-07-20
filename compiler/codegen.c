@@ -149,6 +149,48 @@ void gen_tree(Node *node) {
         }
         printf("        push rax\n");
         return;
+    case ND_LAND:
+        gen_tree(node->left);
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        // Minimal evaluation
+        printf("        je .Lfalse%d\n", node->label + 1);
+
+        gen_tree(node->right);
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        printf("        je .Lfalse%d\n", node->label + 1);
+
+        printf(".Ltrue%d:\n", node->label);
+        printf("        push 1\n");
+        printf("        jmp .Lend%d\n", node->label + 2);
+
+        printf(".Lfalse%d:\n", node->label + 1);
+        printf("        push 0\n");
+
+        printf(".Lend%d:\n", node->label + 2);
+        return;
+    case ND_LOR:
+        gen_tree(node->left);
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        // Minimal evaluation
+        printf("        jne .Ltrue%d\n", node->label + 1);
+
+        gen_tree(node->right);
+        printf("        pop rax\n");
+        printf("        cmp rax, 0\n");
+        printf("        jne .Ltrue%d\n", node->label + 1);
+
+        printf(".Lfalse%d:\n", node->label);
+        printf("        push 0\n");
+        printf("        jmp .Lend%d\n", node->label + 2);
+
+        printf(".Ltrue%d:\n", node->label + 1);
+        printf("        push 1\n");
+
+        printf(".Lend%d:\n", node->label + 2);
+        return;
     case ND_IF:
         gen_tree(node->left);
 
