@@ -481,6 +481,10 @@ Type *type_of(Node *node) {
                 error_at(node->str, "Dereference not to a pointer or an array");
             }
             return ty->ptr_to;
+        case ND_LAND:
+        case ND_LOR:
+            // treat results of logic operators (always 1 or 0) as type int
+            return new_type(INT);
         case ND_FUNC_CALL:
             for (int i = 0; i < vector_count(code); i++) {
                 Node *stmt = (Node*) vector_get(code, i);
@@ -676,6 +680,14 @@ Node *eval_global_init(Node *node) {
             error_at(node->left->str, "expected global variable");
         }
         return node->left;
+    case ND_LAND: // &&
+        first = eval_global_init(node->left);
+        second = eval_global_init(node->right);
+        return new_node_num(eval_number(first) && eval_number(second));
+    case ND_LOR: // ||
+        first = eval_global_init(node->left);
+        second = eval_global_init(node->right);
+        return new_node_num(eval_number(first) || eval_number(second));
     case ND_FUNC: // function
         // TODO: support taking address of functions
         error_at(node->str, "taking address of functions is not supported");

@@ -317,6 +317,13 @@ int test_32() {
     return 0 || 1 && a > 5 || b < 10;
 }
 
+int gv_33 = 1 && 1;
+
+// assert test_33 returns 1
+int test_33() {
+    return gv_33;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -402,6 +409,7 @@ int main() {
     assertEquals(test_30(), 0, "return value of test_30 does not equal 0");
     assertEquals(test_31(), 1, "return value of test_31 does not equal 1");
     assertEquals(test_32(), 1, "return value of test_32 does not equal 1");
+    assertEquals(test_33(), 1, "return value of test_33 does not equal 1");
 
     /*
     This is a block comment
