@@ -328,8 +328,9 @@ typedef int my_int;
 
 // assert test_34 returns 57
 int test_34() {
-    my_int i = 57;
-    return i;
+    my_int i = 56;
+    my_int (f) = 1;
+    return i + f;
 }
 
 int main() {

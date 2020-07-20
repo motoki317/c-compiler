@@ -1012,10 +1012,14 @@ Type *array_type(Type *base) {
 // combine_nested_type is a helper function for nested type parsing.
 Type *combine_nested_type(Type *nested, Type *base) {
     Type *next = nested;
-    while (next->ptr_to) {
+    while (next->ty != -1) {
         next = next->ptr_to;
     }
-    next->ptr_to = base;
+    // copy base type info
+    next->ty = base->ty;
+    next->ptr_to = base->ptr_to;
+    next->array_size = base->array_size;
+    next->params = base->params;
     return nested;
 }
 
@@ -1027,7 +1031,7 @@ Type *type(Type *base) {
     if (consume("(")) {
         // nested type
         // combine base type later
-        nested = type(NULL);
+        nested = type(new_type(-1));
         expect(")");
     } else {
         // variable or function identifier
