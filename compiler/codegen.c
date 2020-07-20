@@ -58,13 +58,8 @@ void load_from_rax_to_rax(size_t size) {
 // multiply_ptr_value multiplies "rdi" register by the type that pointers point to, if the given node represents a pointer.
 // e.g. if the node represents a local variable of type int *, then multiply "rdi" by 4.
 void multiply_ptr_value(Node *node) {
-    if ((node->kind != ND_LOCAL_VAR && node->kind != ND_GLOBAL_VAR) ||
-        node->type == NULL) {
-        return;
-    }
-
+    Type *type = type_of(node);
     // left value is a pointer
-    Type *type = node->type;
     if ((type->ty == PTR || type->ty == ARRAY) && type->ptr_to) {
         // which type this pointer points to / this array is composed of
         size_t ptr_to_size = size_of(type->ptr_to);

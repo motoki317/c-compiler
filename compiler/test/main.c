@@ -263,17 +263,17 @@ int test_27() {
 }
 
 // helper function for test_28 (nested type test)
-// type: func() * [1] int
-int (*test_28_helper())[1] {
-    int a[1];
+// type: func() * [5] int
+int (*test_28_helper())[5] {
+    int a[5];
     a = calloc(1, sizeof(a));
-    a[0] = 10;
+    a[1] = 10;
     return &a;
 }
 
 // assert test_28 returns 10
 int test_28() {
-    return (*test_28_helper())[0];
+    return (*test_28_helper())[1];
 }
 
 // assert test_29 returns 1
