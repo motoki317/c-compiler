@@ -19,13 +19,14 @@ char symbols[][3] = {
     "&&", "||",
     ",", "&",
     "[", "]",
+    ".",
 };
 
 char keywords[][8] = {
     "return", "if", "else",
     "for", "while", "int",
     "sizeof", "char", "void",
-    "typedef",
+    "typedef", "struct",
 };
 
 int next_label = 0;
@@ -82,8 +83,12 @@ struct DefinedType {
     Type *ty;
 };
 
-// List of defined types, elements: *DefinedType
+// List of defined types, elements: DefinedType*
 Vector *types;
+
+// List of struct types, elements: DefinedType*
+// prefixed with "struct"
+Vector *structs;
 
 // consume returns true when the current token is the given expected operator, and proceeds to the next token.
 // Returns false otherwise.
@@ -342,8 +347,10 @@ Program syntax in EBNF
 program    = (type ";" | type "=" init ";" | func | typedef)*
 typedef    = "typedef" type;
 // base type be dynamically added by "typedef" statements
-ptr_type   = "int" | "char" | "void" | type "*"
-type       = ptr_type (ident | "(" type ")") (("[" num "]")* | "(" (type ("," type)*)? ")")
+base_type  = "int" | "char" | "void" | struct_type
+struct_type = "struct" ident? "{" (type ";")* "}"
+ptr_type   = base_type ("*")*
+type       = ptr_type (ident | "(" type ")") (("[" num? "]")* | "(" (type ("," type)*)? ")")
 func       = ptr_type ident "(" (type ("," type)*)? ")" "{" stmt* "}"
 stmt       = expr ";"
             | type ";"
@@ -371,7 +378,9 @@ primary    = num primary_rest
             | string_literal primary_rest
             | ident "(" (expr ("," expr)*)? ")" primary_rest
             | "(" expr ")" primary_rest
-primary_rest = "[" expr "]" primary_rest | ""
+primary_rest = "[" expr "]" primary_rest
+            | "." ident primary_rest
+            | ""
 */
 
 // new_node creates a new AST node according to the given right and left children.
@@ -522,7 +531,7 @@ Type *type_of(Node *node) {
         case ND_GLOBAL_VAR:
         case ND_LOCAL_VAR:
             if (node->type == NULL) {
-                error_at(node->str, "Local variable of unknown type");
+                error("Local variable of unknown type");
             }
             return node->type;
         case ND_NUM:
@@ -537,7 +546,17 @@ Type *type_of(Node *node) {
             return ty;
     }
 
-    error_at(node->str, "unknown type at %.*s", node->len, node->str);
+    error("unknown type");
+}
+
+bool type_equals(Type *first, Type *second);
+
+// defined_type_equals deeply checks the DefinedType struct equality.
+bool defined_type_equals(DefinedType *first, DefinedType *second) {
+    if (strcmp(first->name, second->name) != 0) {
+        return false;
+    }
+    return type_equals(first->ty, second->ty);
 }
 
 // type_equals deeply checks the type equality.
@@ -546,12 +565,37 @@ bool type_equals(Type *first, Type *second) {
         return false;
     }
     switch (first->ty) {
+    case VOID:
     case CHAR:
     case INT:
         return true;
     case PTR:
     case ARRAY:
         return type_equals(first->ptr_to, second->ptr_to);
+    case FUNC:
+        if (vector_count(first->params) != vector_count(second->params)) {
+            return false;
+        }
+        for (int i = 0; i < vector_count(first->params); i++) {
+            Type *first_arg = vector_get(first->params, i);
+            Type *second_arg = vector_get(second->params, i);
+            if (!type_equals(first_arg, second_arg)) {
+                return false;
+            }
+        }
+        return true;
+    case STRUCT:
+        if (vector_count(first->params) != vector_count(second->params)) {
+            return false;
+        }
+        for (int i = 0; i < vector_count(first->params); i++) {
+            DefinedType *first_member = (DefinedType*) vector_get(first->params, i);
+            DefinedType *second_member = (DefinedType*) vector_get(second->params, i);
+            if (defined_type_equals(first_member, second_member)) {
+                return false;
+            }
+        }
+        return true;
     }
     error("type equals not implemented");
 }
@@ -575,7 +619,16 @@ size_t size_of(Type *ty) {
     case FUNC:
         // implicit conversion to pointer
         return 8;
+    case STRUCT: ;
+        // sum of all member sizes
+        int size = 0;
+        for (int i = 0; i < vector_count(ty->params); i++) {
+            DefinedType *member = (DefinedType*) vector_get(ty->params, i);
+            size += size_of(member->ty);
+        }
+        return size;
     }
+    error("size_of not implemented");
 }
 
 // Helper function for eval_global_init
@@ -760,6 +813,41 @@ Node *primary_rest(Node *node) {
         adder->left = node;
         adder->right = right;
         parent->left = adder;
+        return primary_rest(parent);
+    } else if (consume(".")) {
+        // structure (and union) member access
+        Token *ident = expect_identifier();
+        Type *type = type_of(node);
+        node->type = type;
+
+        if (type->ty != STRUCT) {
+            error_at(ident->str, "cannot access %.*s of a non-struct type", ident->len, ident->str);
+        }
+
+        // search member
+        Type *member_type = NULL;
+        int offset = 0;
+        for (int i = 0; i < vector_count(type->params); i++) {
+            DefinedType *member = (DefinedType*) vector_get(type->params, i);
+            if (strlen(member->name) == ident->len
+            && memcmp(member->name, ident->str, ident->len) == 0) {
+                member_type = member->ty;
+                break;
+            } else {
+                offset += size_of(member->ty);
+            }
+        }
+        if (member_type == NULL) {
+            error_at(ident->str, "member with name %.*s not found", ident->len, ident->str);
+        }
+
+        // construct AST as *(node + offset)
+        Node *parent = calloc(1, sizeof(Node));
+        parent->kind = ND_DEREF;
+        parent->left = new_node(ND_ADD, node, new_node_num(offset));
+        // for code generator (ND_DEREF) to know that it's loading from the member
+        parent->left->type = member_type;
+        parent->type = member_type;
         return primary_rest(parent);
     }
     return node;
@@ -958,6 +1046,74 @@ Node *expr() {
     return assign();
 }
 
+DefinedType *new_defined_type(char *str, int len, Type *ty) {
+    DefinedType *defined = calloc(1, sizeof(DefinedType));
+    char *name = calloc(1, len + 1);
+    memcpy(name, str, len);
+    defined->name = name;
+    defined->ty = ty;
+    return defined;
+}
+
+Type *base_type();
+Type *type(Type *base);
+
+// struct_type parses struct type after consuming "struct" keyword.
+Type *struct_type() {
+    Token *ident = consume_identifier();
+    if (ident) {
+        // if identifier is found
+        // e.g. "struct MyStruct"
+        // either a new struct type declaration, or type reference
+        if (!consume("{")) {
+            // type reference
+            for (int i = 0; i < vector_count(structs); i++) {
+                DefinedType *definedStruct = (DefinedType*) vector_get(structs, i);
+                if (ident->len == strlen(definedStruct->name)
+                && memcmp(definedStruct->name, ident->str, ident->len) == 0) {
+                    return definedStruct->ty;
+                }
+            }
+            error_at(ident->str, "struct %.*s is not defined", ident->len, ident->str);
+        }
+    } else {
+        expect("{");
+    }
+
+    // consumed "{", new struct type declaration
+    Type *ty = new_type(STRUCT);
+    ty->params = new_vector();
+
+    // struct member declarations
+    while (!consume("}")) {
+        Type *member_base_type = base_type();
+        if (member_base_type == NULL) {
+            error_at(token->str, "expected base type");
+        }
+        Type *member_type = type(member_base_type);
+        Token *member_name = retrieve_type_identifier(member_type);
+        if (member_name == NULL) {
+            error_at(token->str, "expected member name at struct definition");
+        }
+
+        DefinedType *member = new_defined_type(member_name->str, member_name->len, member_type);
+        vector_add(ty->params, member);
+
+        expect(";");
+    }
+
+    // e.g. "struct MyStruct { ... }"
+    if (ident) {
+        // define struct
+        ty->str = ident->str;
+        ty->len = ident->len;
+        DefinedType *defined = new_defined_type(ident->str, ident->len, ty);
+        vector_add(structs, defined);
+    }
+    // even if no identifier was found, just return the type
+    return ty;
+}
+
 // base_type consumes the next token and returns the base type if found.
 // Returns NULL otherwise.
 Type *base_type() {
@@ -967,6 +1123,8 @@ Type *base_type() {
         return new_type(CHAR);
     } else if (consume_keyword("void")) {
         return new_type(VOID);
+    } else if (consume_keyword("struct")) {
+        return struct_type();
     }
     for (int i = 0; i < vector_count(types); i++) {
         DefinedType *definedType = (DefinedType*) vector_get(types, i);
@@ -1415,12 +1573,7 @@ void type_def() {
         error_at(token->str, "expected identifier for typedef");
     }
 
-    DefinedType *defined = calloc(1, sizeof(DefinedType));
-    char *name = calloc(1, tok->len + 1);
-    memcpy(name, tok->str, tok->len);
-    defined->name = name;
-    defined->ty = ty;
-
+    DefinedType *defined = new_defined_type(tok->str, tok->len, ty);
     vector_add(types, defined);
 }
 
@@ -1430,6 +1583,7 @@ void program() {
     globals = new_vector();
     strings = new_vector();
     types = new_vector();
+    structs = new_vector();
 
     while (!at_eof()) {
         // typedef

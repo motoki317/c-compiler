@@ -52,20 +52,22 @@ typedef enum {
     PTR,
     ARRAY,
     FUNC,
+    STRUCT,
 } TypeKind;
 
 // Variable type
 struct Type {
-  TypeKind ty;
-  // pointer to / array of what type
-  // return type of func
-  Type *ptr_to;
-  size_t array_size;
-  // parameters of func
-  Vector *params;
-  // identifier
-  char *str;
-  int len;
+    TypeKind ty;
+    // pointer to / array of what type
+    // return type of func
+    Type *ptr_to;
+    size_t array_size;
+    // parameters of func, elt type: Type*
+    // parameters of struct, elt type: DefinedType*
+    Vector *params;
+    // identifier, if type is FUNC or STRUCT
+    char *str;
+    int len;
 };
 
 typedef struct LocalVar LocalVar;

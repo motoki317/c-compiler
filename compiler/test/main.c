@@ -333,6 +333,50 @@ int test_34() {
     return i + f;
 }
 
+struct MyStruct {
+    int a;
+    int b;
+};
+typedef struct MyStruct MyStruct;
+
+// assert test_35 returns 18
+int test_35() {
+    struct MyStruct s;
+    s.a = 3;
+    s.b = 5;
+    MyStruct b;
+    b.a = 5;
+    b.b = 5;
+    return s.a + s.b + b.a + b.b;
+}
+
+typedef struct MyStruct2 {
+    char a;
+    char b;
+} MyStruct2;
+
+// assert test_36 returns 10
+int test_36() {
+    MyStruct2 s;
+    s.b = 10;
+    return s.b;
+}
+
+typedef struct {
+    int a;
+    int b;
+    char c;
+} MyStruct3;
+
+// assert test_37 returns 15
+int test_37() {
+    MyStruct3 s;
+    s.a = 4;
+    s.b = 5;
+    s.c = 6;
+    return s.a + s.b + s.c;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -421,6 +465,10 @@ int main() {
     assertEquals(test_33(), 1, "return value of test_33 does not equal 1");
 
     assertEquals(test_34(), 57, "return value of test_34 does not equal 57");
+
+    assertEquals(test_35(), 18, "return value of test_35 does not equal 18");
+    assertEquals(test_36(), 10, "return value of test_36 does not equal 10");
+    assertEquals(test_37(), 15, "return value of test_37 does not equal 15");
 
     /*
     This is a block comment

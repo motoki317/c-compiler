@@ -86,7 +86,7 @@ void gen_tree(Node *node) {
 
         // If the local var type is an array, leave it as an address
         // i.e. implicit conversion of array to pointer to its first member
-        if (node->type && node->type->ty == ARRAY) {
+        if (node->type && (node->type->ty == ARRAY || node->type->ty == STRUCT)) {
             return;
         }
 
