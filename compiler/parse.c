@@ -1410,13 +1410,14 @@ void global(Type *ty) {
 void type_def() {
     Type *base = base_type();
     Type *ty = type(base);
-    if (ty->str == NULL) {
+    Token *tok = retrieve_type_identifier(ty);
+    if (tok == NULL) {
         error_at(token->str, "expected identifier for typedef");
     }
 
     DefinedType *defined = calloc(1, sizeof(DefinedType));
-    char *name = calloc(1, ty->len + 1);
-    memcpy(name, ty->str, ty->len);
+    char *name = calloc(1, tok->len + 1);
+    memcpy(name, tok->str, tok->len);
     defined->name = name;
     defined->ty = ty;
 
