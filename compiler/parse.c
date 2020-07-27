@@ -874,7 +874,9 @@ Node *primary_rest(Node *node) {
         parent->kind = ND_DEREF;
         parent->left = new_node(ND_ADD, node, new_node_num(offset));
         // for code generator (ND_DEREF) to know that it's loading from the member
-        parent->left->type = member_type;
+        Type *deref_type = new_type(PTR);
+        deref_type->ptr_to = member_type;
+        parent->left->type = deref_type;
         parent->type = member_type;
         return primary_rest(parent);
     } else if (consume("->")) {
@@ -911,11 +913,11 @@ Node *primary_rest(Node *node) {
         // construct AST as *(*node + offset)
         Node *parent = calloc(1, sizeof(Node));
         parent->kind = ND_DEREF;
-        // TODO: implement struct correctly?
-        // syntactically, new_node(ND_ADD, new_node(ND_DEREF, node, NULL), new_node_num(offset)) is correct
-        parent->left = new_node(ND_ADD, node, new_node_num(offset));
+        parent->left = new_node(ND_ADD, new_node(ND_DEREF, node, NULL), new_node_num(offset));
         // for code generator (ND_DEREF) to know that it's loading from the member
-        parent->left->type = member_type;
+        Type *deref_type = new_type(PTR);
+        deref_type->ptr_to = member_type;
+        parent->left->type = deref_type;
         parent->type = member_type;
         return primary_rest(parent);
     }
@@ -1002,12 +1004,17 @@ Type *type(Type *base);
 // unary parses the next 'unary' (in EBNF) as AST.
 Node *unary() {
     if (consume_keyword("sizeof")) {
+        int consumed = consume("(");
         Type *base = base_type();
         if (base) {
             Type *ty = type(base);
+            if (consumed) expect(")");
             return new_node_num(size_of(ty));
         }
-        Node *node = unary();
+        Node *node;
+        if (consume) node = expr();
+        else node = unary();
+        if (consumed) expect(")");
         return new_node_num(size_of(type_of(node)));
     } else if (consume("++")) {
         // construct AST of "++i" as "i = i + 1"

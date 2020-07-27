@@ -445,10 +445,10 @@ typedef struct MyStruct4 {
 
 // assert test_45 returns 15
 int test_45() {
-    MyStruct4 *s = calloc(1, sizeof MyStruct4);
+    MyStruct4 *s = calloc(1, sizeof(MyStruct4));
     s->a = 4;
     s->b = 5;
-    s->c = calloc(1, sizeof MyStruct4);
+    s->c = calloc(1, sizeof(MyStruct4));
     s->c->a = 6;
     return s->a + s->b + s->c->a;
 }

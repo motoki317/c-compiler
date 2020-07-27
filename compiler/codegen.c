@@ -59,6 +59,8 @@ void load_from_rax_to_rax(size_t size) {
 // e.g. if the node represents a local variable of type int *, then multiply "rdi" by 4.
 void multiply_ptr_value(Node *node) {
     Type *type = type_of(node);
+    // HACK: ignore pointer to a struct?
+    if ((type->ty == PTR && type->ptr_to->ty == STRUCT)) return;
     // left value is a pointer
     if ((type->ty == PTR || type->ty == ARRAY) && type->ptr_to) {
         // which type this pointer points to / this array is composed of
@@ -164,6 +166,11 @@ void _gen_tree(Node *node) {
         // If the dereference is to an array, implicitly convert it to a pointer
         if (ty->ty == PTR || ty->ty == ARRAY) {
             ty = ty->ptr_to;
+        }
+        // HACK: ignore pointer to struct
+        if (ty->ty == STRUCT) {
+            printf("        push rax\n");
+            return;
         }
         // load from address only if this is not multi-dimensional array, which is linearly on stack
         if (ty->ty != ARRAY) {
