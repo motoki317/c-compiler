@@ -1715,7 +1715,12 @@ void program() {
         Type *ty = type(base);
         if (ty->ty == FUNC) {
             // function
-            vector_add(functions, func(ty));
+            Node *f = func(ty);
+            if (f == NULL) {
+                // TODO: handle prototype function declaration correctly
+                continue;
+            }
+            vector_add(functions, f);
         } else {
             // global variable
             global(ty);
