@@ -409,6 +409,34 @@ int test_42() {
     return 'a';
 }
 
+// assert test_43 returns 35
+int test_43() {
+    int a = 5;
+    int i;
+    int j;
+    for (i = 0; i < 3; ++i) {
+        for (j = 0; j < 15; ++j) {
+            if (j != 10) continue;
+            a = a + j;
+        }
+    }
+    return a;
+}
+
+// assert test_44 returns 50
+int test_44() {
+    int a = 5;
+    int i;
+    int j;
+    for (i = 0; i < 3; ++i) {
+        for (j = 0; j < 15; ++j) {
+            a = a + j;
+            if (j == 5) break;
+        }
+    }
+    return a;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -509,6 +537,9 @@ int main() {
     assertEquals(test_41(), 6, "return value of test_41 does not equal 6");
 
     assertEquals(test_42(), 97, "return value of test_42 does not equal 97");
+
+    assertEquals(test_43(), 35, "return value of test_43 does not equal 35");
+    assertEquals(test_44(), 50, "return value of test_44 does not equal 50");
 
     /*
     This is a block comment

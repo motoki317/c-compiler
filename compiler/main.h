@@ -110,6 +110,8 @@ typedef enum {
     ND_IF, // "if" statement
     ND_WHILE, // "while" statement
     ND_FOR, // "for" statement
+    ND_BREAK, // "break" statement
+    ND_CONTINUE, // "continue" statement
     ND_BLOCK, // "{ ~ }" block statement
     ND_LOCAL_VAR, // Local variable
     ND_GLOBAL_VAR, // Global variable

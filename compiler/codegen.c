@@ -68,8 +68,35 @@ void multiply_ptr_value(Node *node) {
     }
 }
 
-// gen_tree walks the given tree and prints out the assembly calculating the given tree.
+void _gen_tree(Node *node);
+
+// Current gen_tree call stack: elt: Node*
+Vector *gen_tree_stack;
+
+// get_last_loop searches the gen_tree_stack (call stack of gen_tree), and returns the last loop node it found.
+// Returns NULL otherwise.
+Node *get_last_loop() {
+    for (int i = vector_count(gen_tree_stack) - 1; i >= 0; i--) {
+        Node *node = (Node*) vector_get(gen_tree_stack, i);
+        switch (node->kind) {
+        case ND_WHILE:
+        case ND_FOR:
+            return node;
+        }
+    }
+    return NULL;
+}
+
+// separating actual implementation for defer; to search current call stack for "break;" and "continue;"
 void gen_tree(Node *node) {
+    int count = vector_count(gen_tree_stack);
+    vector_add(gen_tree_stack, node);
+    _gen_tree(node);
+    vector_delete(gen_tree_stack, count);
+}
+
+// gen_tree walks the given tree and prints out the assembly calculating the given tree.
+void _gen_tree(Node *node) {
     switch (node->kind) {
     case ND_NUM:
     case ND_CHAR:
@@ -262,6 +289,7 @@ void gen_tree(Node *node) {
         // pop the result so it doesn't stay on stack
         printf("        pop rax\n");
         // on continue
+        printf(".Lcont%d:\n", node->label + 2);
         if (node->third) {
             gen_tree(node->third);
             // pop the result so it doesn't stay on stack
@@ -274,6 +302,38 @@ void gen_tree(Node *node) {
         printf(".Lend%d:\n", node->label + 1);
         // leave something on stack (gen func expects each gen_tree to generate a value)
         printf("        push 0\n");
+        return;
+    case ND_BREAK: ;
+        Node *loop = get_last_loop();
+        if (loop == NULL) {
+            error_at(node->str, "break outside of a loop");
+        }
+        switch (loop->kind) {
+        case ND_WHILE:
+            printf("        jmp .Lend%d\n", loop->label + 1);
+            break;
+        case ND_FOR:
+            printf("        jmp .Lend%d\n", loop->label + 1);
+            break;
+        default:
+            error_at(node->str, "unknown loop?");
+        }
+        return;
+    case ND_CONTINUE:
+        loop = get_last_loop();
+        if (loop == NULL) {
+            error_at(node->str, "continue outside of a loop");
+        }
+        switch (loop->kind) {
+        case ND_WHILE:
+            printf("        jmp .Lbegin%d\n", loop->label);
+            break;
+        case ND_FOR:
+            printf("        jmp .Lcont%d\n", loop->label + 2);
+            break;
+        default:
+            error_at(node->str, "unknown loop?");
+        }
         return;
     case ND_BLOCK:
         for (int i = 0; i < vector_count(node->arguments); i++) {
@@ -512,6 +572,8 @@ void gen_global(GlobalVar *var) {
 
 // gen reads the parsed code in AST, and prints out the assembly to complete the compilation.
 void gen() {
+    gen_tree_stack = new_vector();
+
     // Consume tokens to build multiple ASTs (Abstract Syntax Tree)
     program();
 

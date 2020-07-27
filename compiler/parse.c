@@ -23,11 +23,12 @@ char symbols[][3] = {
     ".", "!",
 };
 
-char keywords[][8] = {
+char keywords[][9] = {
     "return", "if", "else",
     "for", "while", "int",
     "sizeof", "char", "void",
     "typedef", "struct",
+    "break", "continue",
 };
 
 int next_label = 0;
@@ -376,6 +377,8 @@ stmt       = expr ";"
             | "while" "(" expr ")" stmt
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "return" expr ";"
+            | "break" ";"
+            | "continue" ";"
 init       = "{" (expr ("," expr)*)? "}" | expr
 expr       = assign
 assign     = logic_ors ("=" assign)?
@@ -1441,7 +1444,21 @@ Node *stmt() {
         node->fourth = inside;
         // Labels: begin, end
         node->label = next_label;
-        next_label += 2;
+        next_label += 3;
+    } else if (consume_keyword("break")) {
+        expect(";");
+        node = calloc(1, sizeof(Node));
+        // determine where to break while generating code
+        node->kind = ND_BREAK;
+        node->str = token->str;
+        return node;
+    } else if (consume_keyword("continue")) {
+        expect(";");
+        node = calloc(1, sizeof(Node));
+        // determine where to continue while generating code
+        node->kind = ND_CONTINUE;
+        node->str = token->str;
+        return node;
     } else if (consume("{")) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_BLOCK;
