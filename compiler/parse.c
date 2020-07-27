@@ -899,6 +899,7 @@ Node *primary() {
     if (tok) {
         // Function call
         if (consume("(")) {
+            // TODO: check if the function has been declared (including prototype declaration)
             Node *node = calloc(1, sizeof(Node));
             node->kind = ND_FUNC_CALL;
             node->str = tok->str;
@@ -1448,6 +1449,7 @@ Node *func(Type *ty) {
         error_at(token->str, "expected identifier for a function");
     }
 
+    // TODO: check if the function has already been declared (including prototype declaration)
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_FUNC;
     node->type = ty->ptr_to;
@@ -1468,7 +1470,13 @@ Node *func(Type *ty) {
     node->arguments = arguments;
 
     // parse function body
-    expect("{");
+    if (!consume("{")) {
+        // prototype function declaration
+        // TODO: temporarily ignoring it as we're not yet supporting #include.
+        //       should add to the declared function list, and lookup the list when calling a function
+        expect(";");
+        return NULL;
+    }
     Node *block = calloc(1, sizeof(Node));
     block->kind = ND_BLOCK;
     block->arguments = new_vector();
