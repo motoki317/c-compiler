@@ -11,6 +11,7 @@ char symbols[][3] = {
     "==", "!=",
     // notice the check order
     "<=", "<", ">=", ">",
+    "++", "--",
     "+", "-",
     "*", "/",
     "(", ")",
@@ -385,10 +386,12 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = "sizeof" unary
-            | ("+" | "-")? primary
+            | ("++" | "--") primary
+            | ("+" | "-") primary
             | "!" unary
             | "*" unary
             | "&" unary
+            | primary
 primary    = num primary_rest
             | ident primary_rest
             | string_literal primary_rest
@@ -952,6 +955,17 @@ Node *unary() {
     if (consume_keyword("sizeof")) {
         Node *node = unary();
         return new_node_num(size_of(type_of(node)));
+    } else if (consume("++")) {
+        // construct AST of "++i" as "i = i + 1"
+        Node *node = primary();
+        Node *adder = new_node(ND_ADD, node, new_node_num(1));
+        Node *assigner = new_node(ND_ASSIGN, node, adder);
+        return assigner;
+    } else if (consume("--")) {
+        Node *node = primary();
+        Node *subtract = new_node(ND_SUB, node, new_node_num(1));
+        Node *assigner = new_node(ND_ASSIGN, node, subtract);
+        return assigner;
     } else if (consume("+")) {
         return primary();
     } else if (consume("-")) {
