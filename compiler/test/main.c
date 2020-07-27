@@ -377,6 +377,24 @@ int test_37() {
     return s.a + s.b + s.c;
 }
 
+// assert test_38 returns 0
+int test_38() {
+    int i = 5;
+    return !i;
+}
+
+// assert test_39 returns 1
+int test_39() {
+    int i = 0;
+    return !i;
+}
+
+// assert test_40 returns 0
+int test_40() {
+    int i = 0;
+    return !!i;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -469,6 +487,11 @@ int main() {
     assertEquals(test_35(), 18, "return value of test_35 does not equal 18");
     assertEquals(test_36(), 10, "return value of test_36 does not equal 10");
     assertEquals(test_37(), 15, "return value of test_37 does not equal 15");
+
+    assertEquals(test_38(), 0, "return value of test_38 does not equal 0");
+    assertEquals(test_39(), 1, "return value of test_39 does not equal 1");
+    assertEquals(test_40(), 0, "return value of test_40 does not equal 0");
+
 
     /*
     This is a block comment

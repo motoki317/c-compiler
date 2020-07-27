@@ -19,7 +19,7 @@ char symbols[][3] = {
     "&&", "||",
     ",", "&",
     "[", "]",
-    ".",
+    ".", "!",
 };
 
 char keywords[][8] = {
@@ -371,6 +371,7 @@ add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = "sizeof" unary
             | ("+" | "-")? primary
+            | "!" unary
             | "*" unary
             | "&" unary
 primary    = num primary_rest
@@ -518,6 +519,7 @@ Type *type_of(Node *node) {
             return ty->ptr_to;
         case ND_LAND:
         case ND_LOR:
+        case ND_LNOT:
             // treat results of logic operators (always 1 or 0) as type int
             return new_type(INT);
         case ND_FUNC_CALL:
@@ -767,6 +769,9 @@ Node *eval_global_init(Node *node) {
         first = eval_global_init(node->left);
         second = eval_global_init(node->right);
         return new_node_num(eval_number(first) || eval_number(second));
+    case ND_LNOT: // !
+        first = eval_global_init(node->left);
+        return new_node_num(!eval_number(first));
     case ND_FUNC: // function
         // TODO: support taking address of functions
         error_at(node->str, "taking address of functions is not supported");
@@ -935,6 +940,11 @@ Node *unary() {
         return primary();
     } else if (consume("-")) {
         return new_node(ND_SUB, new_node_num(0), primary());
+    } else if (consume("!")) {
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_LNOT;
+        node->left = unary();
+        return node;
     } else if (consume("*")) {
         Node *node = calloc(1, sizeof(Node));
         node->kind = ND_DEREF;
@@ -1016,7 +1026,7 @@ Node *logic() {
     if (consume("&&")) {
         node = new_node(ND_LAND, node, logic());
         node->label = next_label;
-        next_label += 3;
+        next_label += 1;
     }
     return node;
 }
@@ -1027,7 +1037,7 @@ Node *logic_ors() {
     if (consume("||")) {
         node = new_node(ND_LOR, node, logic_ors());
         node->label = next_label;
-        next_label += 3;
+        next_label += 1;
     }
     return node;
 }
