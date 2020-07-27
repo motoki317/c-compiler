@@ -437,6 +437,22 @@ int test_44() {
     return a;
 }
 
+typedef struct MyStruct4 {
+    int a;
+    int b;
+    struct MyStruct4 *c;
+} MyStruct4;
+
+// assert test_45 returns 15
+int test_45() {
+    MyStruct4 *s = calloc(1, sizeof MyStruct4);
+    s->a = 4;
+    s->b = 5;
+    s->c = calloc(1, sizeof MyStruct4);
+    s->c->a = 6;
+    return s->a + s->b + s->c->a;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -540,6 +556,8 @@ int main() {
 
     assertEquals(test_43(), 35, "return value of test_43 does not equal 35");
     assertEquals(test_44(), 50, "return value of test_44 does not equal 50");
+
+    assertEquals(test_45(), 15, "return value of test_45 does not equal 15");
 
     /*
     This is a block comment

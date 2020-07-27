@@ -11,6 +11,7 @@ char symbols[][3] = {
     "==", "!=",
     // notice the check order
     "<=", "<", ">=", ">",
+    "->",
     "++", "--",
     "+", "-",
     "*", "/",
@@ -388,7 +389,7 @@ equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
-unary      = "sizeof" unary
+unary      = "sizeof" (unary | type)
             | ("++" | "--") primary
             | ("+" | "-") primary
             | "!" unary
@@ -402,6 +403,7 @@ primary    = num primary_rest
             | "(" expr ")" primary_rest
 primary_rest = "[" expr "]" primary_rest
             | "." ident primary_rest
+            | "->" ident primary_rest
             | ""
 */
 
@@ -875,6 +877,47 @@ Node *primary_rest(Node *node) {
         parent->left->type = member_type;
         parent->type = member_type;
         return primary_rest(parent);
+    } else if (consume("->")) {
+        // structure (and union) member access through pointer
+        Token *ident = expect_identifier();
+        Type *type = type_of(node);
+        node->type = type;
+
+        if (type->ty != PTR) {
+            error_at(ident->str, "cannot access %.*s of a non-pointer type", ident->len, ident->str);
+        }
+        type = type->ptr_to;
+        if (!type || type->ty != STRUCT) {
+            error_at(ident->str, "cannot access %.*s of a non-struct type", ident->len, ident->str);
+        }
+
+        // search member
+        Type *member_type = NULL;
+        int offset = 0;
+        for (int i = 0; i < vector_count(type->params); i++) {
+            DefinedType *member = (DefinedType*) vector_get(type->params, i);
+            if (strlen(member->name) == ident->len
+            && memcmp(member->name, ident->str, ident->len) == 0) {
+                member_type = member->ty;
+                break;
+            } else {
+                offset += size_of(member->ty);
+            }
+        }
+        if (member_type == NULL) {
+            error_at(ident->str, "member with name %.*s not found", ident->len, ident->str);
+        }
+
+        // construct AST as *(*node + offset)
+        Node *parent = calloc(1, sizeof(Node));
+        parent->kind = ND_DEREF;
+        // TODO: implement struct correctly?
+        // syntactically, new_node(ND_ADD, new_node(ND_DEREF, node, NULL), new_node_num(offset)) is correct
+        parent->left = new_node(ND_ADD, node, new_node_num(offset));
+        // for code generator (ND_DEREF) to know that it's loading from the member
+        parent->left->type = member_type;
+        parent->type = member_type;
+        return primary_rest(parent);
     }
     return node;
 }
@@ -953,9 +996,17 @@ Node *primary() {
     return new_node_num(expect_number());
 }
 
+Type *base_type();
+Type *type(Type *base);
+
 // unary parses the next 'unary' (in EBNF) as AST.
 Node *unary() {
     if (consume_keyword("sizeof")) {
+        Type *base = base_type();
+        if (base) {
+            Type *ty = type(base);
+            return new_node_num(size_of(ty));
+        }
         Node *node = unary();
         return new_node_num(size_of(type_of(node)));
     } else if (consume("++")) {
@@ -1098,9 +1149,6 @@ DefinedType *new_defined_type(char *str, int len, Type *ty) {
     return defined;
 }
 
-Type *base_type();
-Type *type(Type *base);
-
 // struct_type parses struct type after consuming "struct" keyword.
 Type *struct_type() {
     Token *ident = consume_identifier();
@@ -1127,6 +1175,16 @@ Type *struct_type() {
     Type *ty = new_type(STRUCT);
     ty->params = new_vector();
 
+    // to allow declaring the self struct type in members
+    // e.g. "struct MyStruct { ... }"
+    if (ident) {
+        // define struct
+        ty->str = ident->str;
+        ty->len = ident->len;
+        DefinedType *defined = new_defined_type(ident->str, ident->len, ty);
+        vector_add(structs, defined);
+    }
+
     // struct member declarations
     while (!consume("}")) {
         Type *member_base_type = base_type();
@@ -1145,14 +1203,6 @@ Type *struct_type() {
         expect(";");
     }
 
-    // e.g. "struct MyStruct { ... }"
-    if (ident) {
-        // define struct
-        ty->str = ident->str;
-        ty->len = ident->len;
-        DefinedType *defined = new_defined_type(ident->str, ident->len, ty);
-        vector_add(structs, defined);
-    }
     // even if no identifier was found, just return the type
     return ty;
 }
