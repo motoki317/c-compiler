@@ -305,6 +305,7 @@ Token *tokenize_next(char **p, Token *cur) {
 
     // Check for string literal (quoted in double quote " character)
     if (**p == '"') {
+        // NOTE: does not support escaping characters as of now
         *p += 1;
         Token *literal = new_token(TK_STRING, cur, *p);
         int len = 0;
@@ -318,6 +319,20 @@ Token *tokenize_next(char **p, Token *cur) {
         // consume the last double quote " character
         *p += 1;
         literal->len = len;
+        return literal;
+    }
+
+    // Check for char literal -> parse as number
+    if (**p == '\'') {
+        // NOTE: does not support escaping characters as of now
+        *p += 1;
+        Token *literal = new_token(TK_NUM, cur, *p);
+        literal->val = **p;
+        *p += 1;
+        if (**p != '\'') {
+            error_at(*p, "expected closing \' for char literal");
+        }
+        *p += 1;
         return literal;
     }
 
