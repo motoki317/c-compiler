@@ -404,6 +404,11 @@ int test_41() {
     return i;
 }
 
+// assert test_42 returns 97
+int test_42() {
+    return 'a';
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -502,6 +507,8 @@ int main() {
     assertEquals(test_40(), 0, "return value of test_40 does not equal 0");
 
     assertEquals(test_41(), 6, "return value of test_41 does not equal 6");
+
+    assertEquals(test_42(), 97, "return value of test_42 does not equal 97");
 
     /*
     This is a block comment
