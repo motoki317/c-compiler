@@ -255,6 +255,12 @@ int test_26() {
     return s1[0] + s2[0] + x[2];
 }
 
+// assert test_26_1 returns 13
+int test_26_1() {
+    char s[] = "Hello world!";
+    return sizeof(s);
+}
+
 // assert test_27 returns 98
 int test_27() {
     char s[][4] = {"ok", "bar"};
@@ -539,6 +545,7 @@ int main() {
     assertEquals(test_24(), 8, "return value of test_24 does not equal to 8");
     assertEquals(test_25(), 10, "return value of test_25 does not equal to 10");
     assertEquals(test_26(), 234, "return value of test_26 does not equal to 234");
+    assertEquals(test_26_1(), 13, "return value of test_26_1 does not equal to 13");
     assertEquals(test_27(), 98, "return value of test_27 does not equal to 98");
 
     assertEquals(test_28(), 10, "return value of test_28 does not equal to 10");
