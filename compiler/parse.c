@@ -30,6 +30,7 @@ char keywords[][9] = {
     "sizeof", "char", "void",
     "typedef", "struct",
     "break", "continue",
+    "long",
 };
 
 int next_label = 0;
@@ -55,12 +56,16 @@ struct Token {
     TokenKind kind;
     Token *next;
     // Value if kind == TK_NUM
-    int val;
+    long val;
+    // Literal type if kind == TK_NUM, e.g. 9223372036854775808L
+    Type *type;
     // Token
     char *str;
     // Token length
     int len;
 };
+
+Type *new_type(TypeKind kind);
 
 // Current token
 Token *token;
@@ -178,25 +183,24 @@ Token *consume_string() {
 
 // consume_number returns pointer to the consumed number and proceed to the next token.
 // Returns NULL otherwise.
-int *consume_number() {
+Token *consume_number() {
     if (token->kind != TK_NUM) {
         return NULL;
     }
-    int *ret = calloc(1, sizeof(int));
-    *ret = token->val;
+    Token *ret = token;
     token = token->next;
     return ret;
 }
 
 // expect_number returns number and proceed to the next token when the current token is represents a number.
 // Reports error otherwise.
-int expect_number() {
+Token *expect_number() {
     if (token->kind != TK_NUM) {
         error_at(token->str, "Not a number\n");
     }
-    int val = token->val;
+    Token *ret = token;
     token = token->next;
-    return val;
+    return ret;
 }
 
 // at_eof returns true if the current token is the last token.
@@ -303,6 +307,11 @@ Token *tokenize_next(char **p, Token *cur) {
     if (isdigit(**p)) {
         Token *next = new_token(TK_NUM, cur, *p);
         next->val = strtol(*p, p, 10);
+        // Check for literal number type
+        if (**p == 'l' || **p == 'L') {
+            next->type = new_type(LONG);
+            *p += 1;
+        }
         return next;
     }
 
@@ -365,7 +374,7 @@ Program syntax in EBNF
 program    = (type ";" | type "=" init ";" | func | typedef)*
 typedef    = "typedef" type;
 // base type be dynamically added by "typedef" statements
-base_type  = "int" | "char" | "void" | struct_type
+base_type  = "long" | "int" | "char" | "void" | struct_type
 struct_type = "struct" ident? "{" (type ";")* "}"
 ptr_type   = base_type ("*")*
 type       = ptr_type (ident | "(" type ")") (("[" num? "]")* | "(" (type ("," type)*)? ")")
@@ -417,7 +426,7 @@ Node *new_node(NodeKind kind, Node *left, Node *right) {
 }
 
 // new_node_num creates a new ND_NUM node.
-Node *new_node_num(int val) {
+Node *new_node_num(long val) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_NUM;
     node->val = val;
@@ -593,6 +602,7 @@ bool type_equals(Type *first, Type *second) {
     case VOID:
     case CHAR:
     case INT:
+    case LONG:
         return true;
     case PTR:
     case ARRAY:
@@ -634,6 +644,8 @@ size_t size_of(Type *ty) {
         return 1;
     case INT:
         return 4;
+    case LONG:
+        return 8;
     case PTR:
         return 8;
     case ARRAY:
@@ -678,7 +690,7 @@ bool init_node_equals(Node *first, Node *second) {
 
 // Helper function for eval_global_init
 // Returns the number of the node with ND_NUM. If the kind of the node is not ND_NUM, throws an error.
-int eval_number(Node *num) {
+long eval_number(Node *num) {
     if (num->kind != ND_NUM) {
         error_at(num->str, "expected number");
     }
@@ -995,7 +1007,12 @@ Node *primary() {
     }
 
     // Otherwise expect a number.
-    return new_node_num(expect_number());
+    Token *num = expect_number();
+    Node *num_node = new_node_num(num->val);
+    if (num->type) {
+        num_node->type = num->type;
+    }
+    return num_node;
 }
 
 Type *base_type();
@@ -1217,10 +1234,12 @@ Type *struct_type() {
 // base_type consumes the next token and returns the base type if found.
 // Returns NULL otherwise.
 Type *base_type() {
-    if (consume_keyword("int")) {
-        return new_type(INT);
-    } else if (consume_keyword("char")) {
+    if (consume_keyword("char")) {
         return new_type(CHAR);
+    } else if (consume_keyword("int")) {
+        return new_type(INT);
+    } else if (consume_keyword("long")) {
+        return new_type(LONG);
     } else if (consume_keyword("void")) {
         return new_type(VOID);
     } else if (consume_keyword("struct")) {
@@ -1249,10 +1268,10 @@ Type *ptr_type(Type* base) {
 // array_type parses the (array part of the) type.
 Type *array_type(Type *base) {
      if (consume("[")) {
-        int *num = consume_number();
+        Token *num = consume_number();
         int size = -1;
         if (num) {
-            size = *num;
+            size = num->val;
             if (size < 0) {
                 error_at(token->str, "Array size must not be negative");
             }

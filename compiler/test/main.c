@@ -453,6 +453,15 @@ int test_45() {
     return s->a + s->b + s->c->a;
 }
 
+// assert test_46 returns
+long test_46() {
+    // 3e9 which will overflow if it was int (4-bytes)
+    long a = 3000000000L;
+    long b = 3000000000L;
+    // 9e18
+    return a * b;
+}
+
 int main() {
     assert(1 == 1, "1 == 1 assertion failure");
     assert(0 != 1, "0 != 0 assertion failure");
@@ -534,30 +543,32 @@ int main() {
 
     assertEquals(test_28(), 10, "return value of test_28 does not equal to 10");
 
-    assertEquals(test_29(), 1, "return value of test_29 does not equal 1");
-    assertEquals(test_30(), 0, "return value of test_30 does not equal 0");
-    assertEquals(test_31(), 1, "return value of test_31 does not equal 1");
-    assertEquals(test_32(), 1, "return value of test_32 does not equal 1");
-    assertEquals(test_33(), 1, "return value of test_33 does not equal 1");
+    assertEquals(test_29(), 1, "return value of test_29 does not equal to 1");
+    assertEquals(test_30(), 0, "return value of test_30 does not equal to 0");
+    assertEquals(test_31(), 1, "return value of test_31 does not equal to 1");
+    assertEquals(test_32(), 1, "return value of test_32 does not equal to 1");
+    assertEquals(test_33(), 1, "return value of test_33 does not equal to 1");
 
-    assertEquals(test_34(), 57, "return value of test_34 does not equal 57");
+    assertEquals(test_34(), 57, "return value of test_34 does not equal to 57");
 
-    assertEquals(test_35(), 18, "return value of test_35 does not equal 18");
-    assertEquals(test_36(), 10, "return value of test_36 does not equal 10");
-    assertEquals(test_37(), 15, "return value of test_37 does not equal 15");
+    assertEquals(test_35(), 18, "return value of test_35 does not equal to 18");
+    assertEquals(test_36(), 10, "return value of test_36 does not equal to 10");
+    assertEquals(test_37(), 15, "return value of test_37 does not equal to 15");
 
-    assertEquals(test_38(), 0, "return value of test_38 does not equal 0");
-    assertEquals(test_39(), 1, "return value of test_39 does not equal 1");
-    assertEquals(test_40(), 0, "return value of test_40 does not equal 0");
+    assertEquals(test_38(), 0, "return value of test_38 does not equal to 0");
+    assertEquals(test_39(), 1, "return value of test_39 does not equal to 1");
+    assertEquals(test_40(), 0, "return value of test_40 does not equal to 0");
 
-    assertEquals(test_41(), 6, "return value of test_41 does not equal 6");
+    assertEquals(test_41(), 6, "return value of test_41 does not equal to 6");
 
-    assertEquals(test_42(), 97, "return value of test_42 does not equal 97");
+    assertEquals(test_42(), 97, "return value of test_42 does not equal to 97");
 
-    assertEquals(test_43(), 35, "return value of test_43 does not equal 35");
-    assertEquals(test_44(), 50, "return value of test_44 does not equal 50");
+    assertEquals(test_43(), 35, "return value of test_43 does not equal to 35");
+    assertEquals(test_44(), 50, "return value of test_44 does not equal to 50");
 
-    assertEquals(test_45(), 15, "return value of test_45 does not equal 15");
+    assertEquals(test_45(), 15, "return value of test_45 does not equal to 15");
+
+    assertEquals(test_46() == 9000000000000000000L, 1, "return value of test_46 does not equal to 9e18");
 
     /*
     This is a block comment

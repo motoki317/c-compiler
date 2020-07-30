@@ -101,8 +101,15 @@ void gen_tree(Node *node) {
 void _gen_tree(Node *node) {
     switch (node->kind) {
     case ND_NUM:
+        if (size_of(type_of(node)) == 8) {
+            printf("        mov rax, %ld\n", node->val);
+            printf("        push rax\n");
+        } else {
+            printf("        push %d\n", (int) node->val);
+        }
+        return;
     case ND_CHAR:
-        printf("        push %d\n", node->val);
+        printf("        push %d\n", (char) node->val);
         return;
     case ND_STRING:
         printf("        lea rax, .LC%d[rip]\n", node->label);
@@ -512,16 +519,16 @@ void gen_global_node(Node *node, Type *ty) {
         // supposing the type is int, for now
         switch (size_of(ty)) {
         case 1:
-            printf("        .byte %d\n", node->val);
+            printf("        .byte %d\n", (char) node->val);
             break;
         case 2:
-            printf("        .short %d\n", node->val);
+            printf("        .short %d\n", (short) node->val);
             break;
         case 4:
-            printf("        .long %d\n", node->val);
+            printf("        .long %d\n", (int) node->val);
             break;
         case 8:
-            printf("        .quad %d\n", node->val);
+            printf("        .quad %ld\n", node->val);
             break;
         default:
             error_at(node->str, "unsupported size: %d", size_of(ty));
@@ -541,11 +548,11 @@ void gen_global_node(Node *node, Type *ty) {
         break;
     case ND_ADD:
         // expect node->left to be ND_GLOBAL_VAR
-        printf("        .quad %.*s+%d\n", node->left->len, node->left->str, node->right->val);
+        printf("        .quad %.*s+%ld\n", node->left->len, node->left->str, node->right->val);
         break;
     case ND_SUB:
         // expect node->left to be ND_GLOBAL_VAR
-        printf("        .quad %.*s+%d\n", node->left->len, node->left->str, node->right->val);
+        printf("        .quad %.*s+%ld\n", node->left->len, node->left->str, node->right->val);
         break;
     case ND_ARRAY: ;
         if (!ty || ty->ty != ARRAY) {

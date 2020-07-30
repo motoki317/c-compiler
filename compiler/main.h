@@ -49,6 +49,7 @@ typedef enum {
     VOID, // TODO: properly support void type?
     CHAR,
     INT,
+    LONG,
     PTR,
     ARRAY,
     FUNC,
@@ -131,7 +132,7 @@ struct Node {
     Node *third;
     Node *fourth;
     // Value here if the kind is ND_NUM or ND_CHAR
-    int val;
+    long val;
     // Offset and type here if the kind is ND_LOCAL_VAR or ND_GLOBAL_VAR,
     // total local vars offset here if the kind is ND_FUNC
     int offset;
