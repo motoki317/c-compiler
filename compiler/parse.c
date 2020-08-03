@@ -1248,7 +1248,10 @@ Type *base_type() {
     for (int i = 0; i < vector_count(types); i++) {
         DefinedType *definedType = (DefinedType*) vector_get(types, i);
         if (consume_identifier_with_name(definedType->name)) {
-            return definedType->ty;
+            // shallow copy the type to prevent sharing the same struct ptr
+            Type *ret = malloc(sizeof(Type));
+            *ret = *(definedType->ty);
+            return ret;
         }
     }
     return NULL;
