@@ -10,7 +10,10 @@ $(OBJS): main.h
 test: main
 	./test.sh
 
+bench: main
+	./test_bench.sh
+
 clean:
 	rm -f main *.o *~ tmp*
 
-.PHONY: test clean
+.PHONY: test bench clean
